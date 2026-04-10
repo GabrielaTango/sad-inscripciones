@@ -1,0 +1,6 @@
+version: "2"
+tunnels:
+  frontend:
+    proto: http
+    addr: host.docker.internal:80
+    domain: waspy-clarissa-elatedly.ngrok-free.dev

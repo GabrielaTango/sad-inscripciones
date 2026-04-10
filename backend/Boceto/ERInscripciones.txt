@@ -1,0 +1,101 @@
+erDiagram
+
+    EVENTO {
+        int IdEvento PK
+        string Codigo
+        string Descripcion
+        date FechaEvento
+        date FechaCierreInscripcion
+        string Lugar
+        bool SoloSocios
+        int IdTipoEvento FK
+    }
+
+    TIPO_EVENTO {
+        int IdTipoEvento PK
+        string Nombre
+        string Descripcion
+    }
+
+    TIPO_SOCIO {
+        int IdTipoSocio PK
+        string Nombre
+    }
+
+    EVENTO_PRECIO {
+        int IdEventoPrecio PK
+        int IdEvento FK
+        int IdTipoSocio FK
+        string Provincia
+        decimal Precio
+    }
+
+    EVENTO_ADJUNTO_REQUERIDO {
+        int IdEventoAdjunto PK
+        int IdEvento FK
+        int IdTipoSocio FK
+        string DescripcionAdjunto
+        bool Obligatorio
+    }
+
+    ARTICULO {
+        int IdArticulo PK
+        string Nombre
+        string Descripcion
+    }
+
+    EVENTO_ARTICULO {
+        int IdEventoArticulo PK
+        int IdEvento FK
+        int IdArticulo FK
+    }
+
+    EVENTO_ARTICULO_PRECIO {
+        int IdEventoArticuloPrecio PK
+        int IdEventoArticulo FK
+        int IdTipoSocio FK
+        decimal Precio
+    }
+
+    EVENTO_ARTICULO_REGALO {
+        int IdEventoArticuloRegalo PK
+        int IdEvento FK
+        string Nombre
+        string Descripcion
+        int Cantidad
+    }
+
+    CLIENTE {
+        int IdCliente PK
+        string Nombre
+        string Provincia
+        int IdTipoSocio FK
+    }
+
+    INSCRIPCION {
+        int IdInscripcion PK
+        int IdEvento FK
+        int IdCliente FK
+        date FechaInscripcion
+        string Estado
+    }
+
+    %% Relaciones
+    TIPO_EVENTO ||--o{ EVENTO : clasifica
+    EVENTO ||--o{ EVENTO_PRECIO : tiene
+    TIPO_SOCIO ||--o{ EVENTO_PRECIO : aplica
+
+    EVENTO ||--o{ EVENTO_ADJUNTO_REQUERIDO : requiere
+    TIPO_SOCIO ||--o{ EVENTO_ADJUNTO_REQUERIDO : segun
+
+    EVENTO ||--o{ EVENTO_ARTICULO : ofrece
+    ARTICULO ||--o{ EVENTO_ARTICULO : participa
+
+    EVENTO_ARTICULO ||--o{ EVENTO_ARTICULO_PRECIO : tiene
+    TIPO_SOCIO ||--o{ EVENTO_ARTICULO_PRECIO : segun
+
+    EVENTO ||--o{ EVENTO_ARTICULO_REGALO : regala
+
+    TIPO_SOCIO ||--o{ CLIENTE : pertenece
+    CLIENTE ||--o{ INSCRIPCION : realiza
+    EVENTO ||--o{ INSCRIPCION : recibe

@@ -1,0 +1,6 @@
+@SAD.Inscripciones.API_HostAddress = http://localhost:5161
+
+GET {{SAD.Inscripciones.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

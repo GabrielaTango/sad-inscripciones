@@ -1,0 +1,6 @@
+version: "2"
+tunnels:
+  frontend:
+    proto: http
+    addr: nginx:80
+    domain: waspy-clarissa-elatedly.ngrok-free.dev
