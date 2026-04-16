@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Activity, Users, Award, BookOpen, GraduationCap } from 'lucide-react'
+import { Users, Award, BookOpen, GraduationCap } from 'lucide-react'
+import logo from '../../assets/circulo.png'
 
 const Hero = () => {
   return (
@@ -11,8 +12,8 @@ const Hero = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 relative">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>
-            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-6">
-              <Activity className="w-4 h-4" />
+            <div className="inline-flex items-center space-x-2 bg-white text-blue-700 backdrop-blur-sm px-4 py-2 rounded-full mb-6">
+              <img src={logo} alt="SAD Logo" className="h-6 w-6" />
               <span className="text-sm font-medium">Sociedad Argentina de Diabetes</span>
             </div>
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
@@ -39,29 +40,29 @@ const Hero = () => {
             </div>
           </div>
 
-          <div className="hidden md:grid grid-cols-2 gap-4">
-            <div className="space-y-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
-                <Users className="w-10 h-10 mb-4 text-blue-200" />
-                <h3 className="text-2xl font-bold">2,500+</h3>
-                <p className="text-blue-100">Profesionales certificados</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
-                <Award className="w-10 h-10 mb-4 text-blue-200" />
-                <h3 className="text-2xl font-bold">15+</h3>
-                <p className="text-blue-100">Años de experiencia</p>
-              </div>
-            </div>
-            <div className="space-y-4 mt-8">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
-                <BookOpen className="w-10 h-10 mb-4 text-blue-200" />
-                <h3 className="text-2xl font-bold">50+</h3>
-                <p className="text-blue-100">Cursos disponibles</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
-                <GraduationCap className="w-10 h-10 mb-4 text-blue-200" />
-                <h3 className="text-2xl font-bold">30+</h3>
-                <p className="text-blue-100">Instructores expertos</p>
+          <div className="hidden md:block">
+            <div className="bg-white rounded-3xl p-6 shadow-lg">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-2xl p-6">
+                  <Users className="w-10 h-10 mb-4 text-blue-600" />
+                  <h3 className="text-2xl font-bold text-slate-800">2,500+</h3>
+                  <p className="text-slate-500">Profesionales certificados</p>
+                </div>
+                <div className="bg-blue-50 rounded-2xl p-6">
+                  <Award className="w-10 h-10 mb-4 text-blue-600" />
+                  <h3 className="text-2xl font-bold text-slate-800">15+</h3>
+                  <p className="text-slate-500">Años de experiencia</p>
+                </div>
+                <div className="bg-blue-50 rounded-2xl p-6">
+                  <BookOpen className="w-10 h-10 mb-4 text-blue-600" />
+                  <h3 className="text-2xl font-bold text-slate-800">50+</h3>
+                  <p className="text-slate-500">Cursos disponibles</p>
+                </div>
+                <div className="bg-blue-50 rounded-2xl p-6">
+                  <GraduationCap className="w-10 h-10 mb-4 text-blue-600" />
+                  <h3 className="text-2xl font-bold text-slate-800">30+</h3>
+                  <p className="text-slate-500">Instructores expertos</p>
+                </div>
               </div>
             </div>
           </div>

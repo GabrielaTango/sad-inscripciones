@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { Heart, UserCheck, Settings, LogOut, UserPlus, ChevronDown } from 'lucide-react'
+import { UserCheck, Settings, LogOut, UserPlus, ChevronDown } from 'lucide-react'
+import logo from '../../assets/logo70.png'
 
 const Navbar = () => {
   const { isAuthenticated, isAdmin, cuit, logout } = useAuth()
@@ -26,13 +27,15 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-              <Heart className="w-6 h-6 md:w-7 md:h-7 text-white" />
+            <div className="flex items-center justify-center">
+              <img src={logo} alt="SAD Logo" className="h-12 md:h-16 w-auto object-contain" />
             </div>
+            {/*
             <div className="hidden sm:block">
               <h1 className="text-lg md:text-xl font-bold text-slate-800">Sociedad de Diabetes</h1>
               <p className="text-xs text-slate-500">Educación médica continua</p>
             </div>
+            */}
           </Link>
 
           {/* Desktop Navigation */}
