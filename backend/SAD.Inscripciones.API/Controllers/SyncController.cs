@@ -1,3 +1,4 @@
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,40 @@ public class SyncController : ControllerBase
         return key == _apiKey;
     }
 
+    // Construye un INSERT multi-row con upsert en una sola query
+    // (MySQL 8.0.20+: INSERT ... VALUES (...) AS new ON DUPLICATE KEY UPDATE col = new.col).
+    // Reemplaza el patrón Dapper.ExecuteAsync(sql, items) que iteraba 1 query por item.
+    private static (string sql, DynamicParameters parameters) BuildBulkUpsert<T>(
+        string table,
+        string[] columns,
+        string[] updateColumns,
+        IReadOnlyList<T> items,
+        Func<T, object?[]> getValues)
+    {
+        var parameters = new DynamicParameters();
+        var values = new StringBuilder();
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (i > 0) values.Append(", ");
+            values.Append('(');
+            var rowValues = getValues(items[i]);
+            for (var c = 0; c < columns.Length; c++)
+            {
+                if (c > 0) values.Append(", ");
+                var pname = $"p{i}_{columns[c]}";
+                values.Append('@').Append(pname);
+                parameters.Add(pname, rowValues[c]);
+            }
+            values.Append(')');
+        }
+
+        var colList = string.Join(", ", columns);
+        var updates = string.Join(", ", updateColumns.Select(c => $"{c} = new.{c}"));
+        var sql = $"INSERT INTO {table} ({colList}) VALUES {values} AS new ON DUPLICATE KEY UPDATE {updates}";
+        return (sql, parameters);
+    }
+
     // --- CLIENTES ---
 
     [HttpPost("clientes")]
@@ -41,8 +76,16 @@ public class SyncController : ControllerBase
     {
         if (!ValidateApiKey()) return Unauthorized();
         if (items == null || items.Length == 0) return Ok(new { count = 0 });
+
+        var (sql, parameters) = BuildBulkUpsert(
+            "Clientes",
+            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended" },
+            new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended" },
+            items,
+            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended });
+
         using var conn = _dbFactory.CreateConnection();
-        await conn.ExecuteAsync(SqlClientes, items);
+        await conn.ExecuteAsync(sql, parameters);
         return Ok(new { count = items.Length });
     }
 
@@ -76,8 +119,16 @@ public class SyncController : ControllerBase
     {
         if (!ValidateApiKey()) return Unauthorized();
         if (items == null || items.Length == 0) return Ok(new { count = 0 });
+
+        var (sql, parameters) = BuildBulkUpsert(
+            "Articulos",
+            new[] { "CodArticu", "Descripcio" },
+            new[] { "Descripcio" },
+            items,
+            a => new object?[] { a.CodArticu, a.Descripcio });
+
         using var conn = _dbFactory.CreateConnection();
-        await conn.ExecuteAsync(SqlArticulos, items);
+        await conn.ExecuteAsync(sql, parameters);
         return Ok(new { count = items.Length });
     }
 
@@ -111,8 +162,16 @@ public class SyncController : ControllerBase
     {
         if (!ValidateApiKey()) return Unauthorized();
         if (items == null || items.Length == 0) return Ok(new { count = 0 });
+
+        var (sql, parameters) = BuildBulkUpsert(
+            "Provincias",
+            new[] { "Codigo", "Nombre" },
+            new[] { "Nombre" },
+            items,
+            p => new object?[] { p.Codigo, p.Nombre });
+
         using var conn = _dbFactory.CreateConnection();
-        await conn.ExecuteAsync(SqlProvincias, items);
+        await conn.ExecuteAsync(sql, parameters);
         return Ok(new { count = items.Length });
     }
 
@@ -145,8 +204,16 @@ public class SyncController : ControllerBase
     {
         if (!ValidateApiKey()) return Unauthorized();
         if (items == null || items.Length == 0) return Ok(new { count = 0 });
+
+        var (sql, parameters) = BuildBulkUpsert(
+            "Vendedores",
+            new[] { "CodVended", "CtaCaja", "CtaTransferencia", "CtaCuotas", "CtaOtra" },
+            new[] { "CtaCaja", "CtaTransferencia", "CtaCuotas", "CtaOtra" },
+            items,
+            v => new object?[] { v.CodVended, v.CtaCaja, v.CtaTransferencia, v.CtaCuotas, v.CtaOtra });
+
         using var conn = _dbFactory.CreateConnection();
-        await conn.ExecuteAsync(SqlVendedores, items);
+        await conn.ExecuteAsync(sql, parameters);
         return Ok(new { count = items.Length });
     }
 
