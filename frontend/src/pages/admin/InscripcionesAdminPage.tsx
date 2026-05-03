@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Check, Bookmark, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Check, Bookmark, X, RefreshCw, Receipt } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
 import ConfirmDialog from '../../components/Admin/ConfirmDialog'
 import { inscripcionesService } from '../../services/inscripcionesService'
@@ -7,12 +8,15 @@ import { eventosService } from '../../services/eventosService'
 import type { Inscripcion, Evento } from '../../types/models'
 
 const InscripcionesAdminPage = () => {
+  const navigate = useNavigate()
   const [data, setData] = useState<Inscripcion[]>([])
   const [eventos, setEventos] = useState<Evento[]>([])
   const [eventoFilter, setEventoFilter] = useState<number | ''>('')
   const [showConfirm, setShowConfirm] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
+  const [verifyingId, setVerifyingId] = useState<number | null>(null)
+  const [verifyResult, setVerifyResult] = useState<string>('')
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -29,6 +33,22 @@ const InscripcionesAdminPage = () => {
   const handleEstado = async (id: number, estado: string) => {
     try { await inscripcionesService.updateEstado(id, estado); await load() }
     catch (err) { setError(err instanceof Error ? err.message : 'Error') }
+  }
+
+  const handleVerificarMP = async (id: number) => {
+    setVerifyingId(id); setError(''); setVerifyResult('')
+    try {
+      const r = await inscripcionesService.verificarMP(id)
+      const msg = r.cambio
+        ? `Inscripcion ${id}: ${r.estadoAnterior} → ${r.estadoNuevo} (aprobado: $${r.montoAprobado.toFixed(2)}, ${r.pagosEncontrados} pagos MP, ${r.pagosNuevos} nuevos)`
+        : `Inscripcion ${id}: sin cambios (estado ${r.estadoNuevo}, aprobado $${r.montoAprobado.toFixed(2)}, ${r.pagosEncontrados} pagos MP)`
+      setVerifyResult(msg)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error verificando MP')
+    } finally {
+      setVerifyingId(null)
+    }
   }
 
   const handleDelete = async () => {
@@ -59,6 +79,12 @@ const InscripcionesAdminPage = () => {
     <div>
       <h2 className="font-bold text-slate-800 mb-4">Inscripciones</h2>
       {error && <div className="alert-danger">{error}</div>}
+      {verifyResult && (
+        <div className="alert-info flex items-center justify-between">
+          <span>{verifyResult}</span>
+          <button className="ml-4 p-1 hover:opacity-70" onClick={() => setVerifyResult('')}><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       <div className="mb-3">
         <select className="form-select w-auto" value={eventoFilter} onChange={e => setEventoFilter(e.target.value ? Number(e.target.value) : '')}>
@@ -75,18 +101,33 @@ const InscripcionesAdminPage = () => {
           const insc = item as Inscripcion
           return (
             <>
-              {insc.estado === 'Pendiente' && (
-                <>
-                  <button className="btn-outline-success btn-sm p-1.5" onClick={() => handleEstado(insc.id, 'Confirmada')} title="Confirmar"><Check className="w-4 h-4" /></button>
-                  <button className="btn-outline-primary btn-sm p-1.5" onClick={() => handleEstado(insc.id, 'Reservada')} title="Reservar"><Bookmark className="w-4 h-4" /></button>
-                  <button className="inline-flex items-center justify-center p-1.5 border border-amber-500 bg-white text-amber-500 rounded-lg text-sm hover:bg-amber-500 hover:text-white transition-colors" onClick={() => handleEstado(insc.id, 'Cancelada')} title="Cancelar"><X className="w-4 h-4" /></button>
-                </>
+              <button
+                className="btn-outline-info btn-sm p-1.5"
+                onClick={() => navigate(`/admin/pagos?inscripcionId=${insc.id}`)}
+                title="Ver pagos de esta inscripcion"
+              >
+                <Receipt className="w-4 h-4" />
+              </button>
+              {(insc.estado === 'Pendiente' || insc.estado === 'Reservada') && (
+                <button
+                  className="btn-outline-secondary btn-sm p-1.5"
+                  disabled={verifyingId !== null}
+                  onClick={() => handleVerificarMP(insc.id)}
+                  title="Verificar pago en Mercado Pago"
+                >
+                  {verifyingId === insc.id
+                    ? <span className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                    : <RefreshCw className="w-4 h-4" />}
+                </button>
               )}
-              {insc.estado === 'Reservada' && (
-                <>
-                  <button className="btn-outline-success btn-sm p-1.5" onClick={() => handleEstado(insc.id, 'Confirmada')} title="Confirmar"><Check className="w-4 h-4" /></button>
-                  <button className="inline-flex items-center justify-center p-1.5 border border-amber-500 bg-white text-amber-500 rounded-lg text-sm hover:bg-amber-500 hover:text-white transition-colors" onClick={() => handleEstado(insc.id, 'Cancelada')} title="Cancelar"><X className="w-4 h-4" /></button>
-                </>
+              {insc.estado !== 'Confirmada' && (
+                <button className="btn-outline-success btn-sm p-1.5" onClick={() => handleEstado(insc.id, 'Confirmada')} title="Confirmar"><Check className="w-4 h-4" /></button>
+              )}
+              {insc.estado !== 'Reservada' && (
+                <button className="btn-outline-primary btn-sm p-1.5" onClick={() => handleEstado(insc.id, 'Reservada')} title="Reservar"><Bookmark className="w-4 h-4" /></button>
+              )}
+              {insc.estado !== 'Cancelada' && (
+                <button className="inline-flex items-center justify-center p-1.5 border border-amber-500 bg-white text-amber-500 rounded-lg text-sm hover:bg-amber-500 hover:text-white transition-colors" onClick={() => handleEstado(insc.id, 'Cancelada')} title="Cancelar"><X className="w-4 h-4" /></button>
               )}
             </>
           )

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Heart } from 'lucide-react'
+import logo from '../../assets/circulo.png'
 
 const Footer = () => {
   return (
@@ -7,9 +7,9 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row justify-between items-center">
           <Link to="/" className="flex items-center space-x-3 mb-6 md:mb-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-              <Heart className="w-5 h-5 text-white" />
-            </div>
+            
+              <img src={logo} alt="SAD Logo" className="h-6 w-6" />
+            
             <div>
               <h3 className="font-bold">Sociedad de Diabetes</h3>
               <p className="text-slate-400 text-sm">Educación médica continua</p>

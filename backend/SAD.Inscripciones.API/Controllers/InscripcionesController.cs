@@ -12,13 +12,20 @@ public class InscripcionesController : ControllerBase
     private readonly IInscripcionService _service;
     private readonly IMercadoPagoService _mercadoPagoService;
     private readonly IEventoService _eventoService;
+    private readonly IInscripcionPagoValidationService _pagoValidation;
     private readonly ILogger<InscripcionesController> _logger;
 
-    public InscripcionesController(IInscripcionService service, IMercadoPagoService mercadoPagoService, IEventoService eventoService, ILogger<InscripcionesController> logger)
+    public InscripcionesController(
+        IInscripcionService service,
+        IMercadoPagoService mercadoPagoService,
+        IEventoService eventoService,
+        IInscripcionPagoValidationService pagoValidation,
+        ILogger<InscripcionesController> logger)
     {
         _service = service;
         _mercadoPagoService = mercadoPagoService;
         _eventoService = eventoService;
+        _pagoValidation = pagoValidation;
         _logger = logger;
     }
 
@@ -48,6 +55,45 @@ public class InscripcionesController : ControllerBase
 
         var result = await _service.GetPendientesByDocumentoAsync(documento.Trim(), eventoId);
         return Ok(result);
+    }
+
+    [HttpGet("pendientes/count")]
+    [Authorize]
+    public async Task<IActionResult> CountPendientes()
+    {
+        var cuit = User.FindFirst("cuit")?.Value;
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        var count = await _service.CountPendientesByDocumentoAsync(cuit.Trim());
+        return Ok(new { count });
+    }
+
+    [HttpPost("validar-pendientes")]
+    [Authorize]
+    public async Task<IActionResult> ValidarPendientes()
+    {
+        var cuit = User.FindFirst("cuit")?.Value;
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        var result = await _pagoValidation.ValidarPendientesPorDocumentoAsync(cuit.Trim());
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/verificar-mp")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> AdminVerificarMP(int id)
+    {
+        try
+        {
+            var result = await _pagoValidation.ValidarInscripcionAsync(id);
+            return Ok(result);
+        }
+        catch (ArgumentException)
+        {
+            return NotFound(new { error = $"Inscripcion {id} no encontrada" });
+        }
     }
 
     [HttpPost]
@@ -195,7 +241,8 @@ public class InscripcionesController : ControllerBase
 
     /// <summary>
     /// Llamado por el frontend cuando MP redirige de vuelta con payment_id.
-    /// Consulta la API de MP, registra el pago y actualiza la inscripción.
+    /// Busca en MP todos los pagos de la inscripción, crea/actualiza los rows de Pago
+    /// y ajusta el estado de la inscripción. Idempotente — no depende del webhook.
     /// </summary>
     [HttpPost("confirmar-pago")]
     public async Task<IActionResult> ConfirmarPago([FromBody] ConfirmarPagoDto dto)
@@ -203,61 +250,36 @@ public class InscripcionesController : ControllerBase
         _logger.LogInformation(">>> ConfirmarPago: paymentId={PaymentId}, externalReference={ExtRef}",
             dto.PaymentId, dto.ExternalReference);
 
-        var paymentInfo = await _mercadoPagoService.ObtenerInfoPagoAsync(dto.PaymentId);
-        if (paymentInfo == null)
-            return BadRequest(new { error = "No se pudo obtener info del pago desde Mercado Pago." });
-
-        // Determinar inscripción desde ExternalReference del pago
-        var externalRef = paymentInfo.ExternalReference ?? dto.ExternalReference;
-        if (!int.TryParse(externalRef, out var inscripcionId))
-            return BadRequest(new { error = "Referencia de inscripción inválida." });
-
-        var inscripcion = await _service.GetByIdAsync(inscripcionId);
-
-        var estadoPago = paymentInfo.Status switch
+        // Resolver inscripcionId: preferimos el externalReference enviado por MP en la query;
+        // si no vino, consultamos MP por paymentId.
+        int inscripcionId;
+        if (!int.TryParse(dto.ExternalReference, out inscripcionId))
         {
-            "approved" => "Confirmado",
-            "pending" or "in_process" or "authorized" => "Pendiente",
-            "rejected" or "cancelled" or "refunded" or "charged_back" => "Rechazado",
-            _ => "Pendiente"
-        };
-
-        string estadoInscripcion;
-        if (estadoPago == "Confirmado")
-        {
-            // Si tiene MontoReserva y estaba Pendiente → pasa a Reservada (pagó la seña)
-            // Si estaba Reservada → pasa a Confirmada (pagó el resto)
-            if (inscripcion.Estado == "Pendiente" && inscripcion.MontoReserva.HasValue)
-                estadoInscripcion = "Reservada";
-            else if (inscripcion.Estado == "Reservada")
-                estadoInscripcion = "Confirmada";
-            else
-                estadoInscripcion = "Confirmada";
-        }
-        else if (estadoPago == "Rechazado")
-        {
-            estadoInscripcion = "Rechazada";
-        }
-        else
-        {
-            estadoInscripcion = inscripcion.Estado;
+            var paymentInfo = await _mercadoPagoService.ObtenerInfoPagoAsync(dto.PaymentId);
+            if (paymentInfo == null || !int.TryParse(paymentInfo.ExternalReference, out inscripcionId))
+                return BadRequest(new { error = "Referencia de inscripción inválida." });
         }
 
-        // Actualizar estado de inscripción
-        if (estadoInscripcion != inscripcion.Estado)
+        ValidacionInscripcionResult resultado;
+        try
         {
-            await _service.UpdateEstadoAsync(inscripcionId, estadoInscripcion, "mercadopago");
+            resultado = await _pagoValidation.ValidarInscripcionAsync(inscripcionId);
+        }
+        catch (ArgumentException)
+        {
+            return NotFound(new { error = $"Inscripcion {inscripcionId} no encontrada" });
         }
 
-        _logger.LogInformation(">>> ConfirmarPago resultado: inscripcion={Id}, estadoPago={EstadoPago}, estadoInscripcion={EstadoInscripcion}",
-            inscripcionId, estadoPago, estadoInscripcion);
+        _logger.LogInformation(
+            ">>> ConfirmarPago resultado: inscripcion={Id}, {Anterior}→{Nuevo}, montoAprobado={Monto}, pagosNuevos={Nuevos}",
+            inscripcionId, resultado.EstadoAnterior, resultado.EstadoNuevo, resultado.MontoAprobado, resultado.PagosNuevos);
 
         return Ok(new
         {
             inscripcionId,
-            estadoPago,
-            estadoInscripcion,
-            paymentInfo.TransactionAmount,
+            estadoInscripcion = resultado.EstadoNuevo,
+            estadoPago = resultado.MontoAprobado > 0 ? "Confirmado" : "Pendiente",
+            transactionAmount = resultado.MontoAprobado,
         });
     }
 

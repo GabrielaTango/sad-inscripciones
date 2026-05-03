@@ -19,7 +19,7 @@ public class TangoGVA14 : TangoEntity
             "ID_GVA10" => SqlH.TraerIdCampo("GVA10", "ID_GVA10", "NRO_DE_LIS", Get("NRO_LISTA")),
             "ID_GVA23" => SqlH.TraerIdCampo("GVA23", "ID_GVA23", "COD_VENDED", Get("COD_VENDED")),
             "ID_GVA24" => SqlH.TraerIdCampo("GVA24", "ID_GVA24", "COD_TRANSP", Get("COD_TRANSP")),
-            "ID_TIPO_DOCUMENTO_GV" => $"(SELECT TOP 1 ID_TIPO_DOCUMENTO_GV FROM TIPO_DOCUMENTO_GV WHERE TIPO_DOCUMENTO = {Get("TIPO_DOC")})",
+            "ID_TIPO_DOCUMENTO_GV" => $"(SELECT TOP 1 ID_TIPO_DOCUMENTO_GV FROM TIPO_DOCUMENTO_GV WHERE COD_TIPO_DOCUMENTO_GV = {Get("TIPO_DOC")})",
             "ID_SUCURSAL" => "1",
             _ => base.FormatValue(field, value)
         };

@@ -29,6 +29,8 @@ builder.Services.AddScoped<IBecaCodigoRepository, BecaCodigoRepository>();
 builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
 builder.Services.AddScoped<IPromocionRepository, PromocionRepository>();
 builder.Services.AddScoped<IPromocionCuponRepository, PromocionCuponRepository>();
+builder.Services.AddScoped<IConfiguracionEmailRepository, ConfiguracionEmailRepository>();
+builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
 
 // Services
 builder.Services.AddScoped<ITipoEventoService, TipoEventoService>();
@@ -45,6 +47,9 @@ builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IPromocionService, PromocionService>();
 builder.Services.AddScoped<IPromocionCuponService, PromocionCuponService>();
 builder.Services.AddSingleton<IMercadoPagoService, MercadoPagoService>();
+builder.Services.AddScoped<IInscripcionPagoValidationService, InscripcionPagoValidationService>();
+builder.Services.AddSingleton<ICryptoService, CryptoService>();
+builder.Services.AddSingleton<IEmailService, EmailService>();
 
 // CORS
 builder.Services.AddCors(options =>
@@ -86,6 +91,8 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Admin", policy =>
         policy.RequireRole("Admin"));
+    options.AddPolicy("Capitulo", policy =>
+        policy.RequireRole("Capitulo"));
 });
 
 // Controllers

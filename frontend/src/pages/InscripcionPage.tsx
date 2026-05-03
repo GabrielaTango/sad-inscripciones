@@ -237,7 +237,7 @@ const InscripcionPage = () => {
                           <option value={0}>Seleccionar...</option>
                           {preciosFiltrados.map(p => (
                             <option key={p.tipoAlumnoId} value={p.tipoAlumnoId}>
-                              {tipoAlumnoNombre(p.tipoAlumnoId)} - ${p.precioBase.toFixed(2)}
+                              {tipoAlumnoNombre(p.tipoAlumnoId)}
                             </option>
                           ))}
                         </select>
@@ -247,11 +247,10 @@ const InscripcionPage = () => {
                         <input type="date" className="form-input" value={form.fechaNacimiento || ''} onChange={(e) => setForm({ ...form, fechaNacimiento: e.target.value })} />
                       </div>
 
-                      {selectedPrecio && (
+                      {selectedPrecio && selectedPrecio.permiteDescuento && (
                         <div className="md:col-span-12">
-                          <div className="alert-info mb-0">
-                            <strong>Precio base:</strong> ${selectedPrecio.precioBase.toFixed(2)}
-                            {selectedPrecio.permiteDescuento && <span className="text-slate-600 ml-2">(acepta descuentos)</span>}
+                          <div className="alert-info mb-0 text-slate-600">
+                            Esta categoría acepta descuentos.
                           </div>
                         </div>
                       )}
@@ -381,21 +380,21 @@ const InscripcionPage = () => {
                       <div className="md:col-span-12 mt-4">
                         {selectedPrecio && selectedPrecio.precioBase > 0 ? (
                           <>
-                            <div className="mb-3">
-                              <div className="inline-flex items-center gap-2">
-                                <input className="form-check-input" type="radio" name="modalidadPago" id="pagoUnico" value="unico" checked={modalidadPago === 'unico'} onChange={() => setModalidadPago('unico')} />
-                                <label className="text-sm" htmlFor="pagoUnico">En un Pago</label>
-                              </div>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3">
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input className="form-check-input" type="radio" name="modalidadPago" value="unico" checked={modalidadPago === 'unico'} onChange={() => setModalidadPago('unico')} />
+                                <span className="text-sm">En un Pago</span>
+                              </label>
                               {selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
-                                <div className="inline-flex items-center gap-2">
-                                  <input className="form-check-input" type="radio" name="modalidadPago" id="pagoCuotas" value="cuotas" checked={modalidadPago === 'cuotas'} onChange={() => setModalidadPago('cuotas')} />
-                                  <label className="text-sm" htmlFor="pagoCuotas">Cuotas Sin Interes</label>
-                                </div>
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
+                                  <input className="form-check-input" type="radio" name="modalidadPago" value="cuotas" checked={modalidadPago === 'cuotas'} onChange={() => setModalidadPago('cuotas')} />
+                                  <span className="text-sm">Cuotas Sin Interes</span>
+                                </label>
                               )}
-                              <div className="inline-flex items-center gap-2">
-                                <input className="form-check-input" type="radio" name="modalidadPago" id="pagoReserva" value="reserva" checked={modalidadPago === 'reserva'} onChange={() => setModalidadPago('reserva')} />
-                                <label className="text-sm" htmlFor="pagoReserva">Reservar Vacante</label>
-                              </div>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input className="form-check-input" type="radio" name="modalidadPago" value="reserva" checked={modalidadPago === 'reserva'} onChange={() => setModalidadPago('reserva')} />
+                                <span className="text-sm">Reservar Vacante</span>
+                              </label>
                             </div>
 
                             {modalidadPago === 'unico' && (

@@ -60,4 +60,23 @@ export const inscripcionesService = {
     api.post<ConfirmarPagoResult>(`${BASE}/confirmar-pago`, { paymentId, externalReference }),
   updateEstado: (id: number, estado: string) => api.patch<void>(`${BASE}/${id}/estado`, { estado }),
   remove: (id: number) => api.delete<void>(`${BASE}/${id}`),
+  countPendientes: () => api.get<{ count: number }>(`${BASE}/pendientes/count`),
+  validarPendientes: () => api.post<ValidarInscripcionesResult>(`${BASE}/validar-pendientes`, {}),
+  verificarMP: (id: number) => api.post<ValidacionInscripcion>(`${BASE}/${id}/verificar-mp`, {}),
+}
+
+export interface ValidacionInscripcion {
+  inscripcionId: number
+  estadoAnterior: string
+  estadoNuevo: string
+  montoAprobado: number
+  pagosEncontrados: number
+  pagosNuevos: number
+  cambio: boolean
+}
+
+export interface ValidarInscripcionesResult {
+  revisadas: number
+  actualizadas: number
+  detalles: ValidacionInscripcion[]
 }

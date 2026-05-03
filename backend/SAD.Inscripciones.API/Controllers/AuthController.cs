@@ -33,12 +33,16 @@ public class AuthController : ControllerBase
         var usuario = await _usuarioService.ValidateCredentialsAsync(loginDto.Usuario, loginDto.Password);
         if (usuario != null)
         {
-            var token = GenerateJwtToken(usuario.Username, isAdmin: true);
+            var esCapitulo = usuario.EsCapitulo && !string.IsNullOrEmpty(usuario.CodVended);
+            var role = esCapitulo ? "Capitulo" : "Admin";
+            var token = GenerateJwtToken(usuario.Username, role: role, codVended: esCapitulo ? usuario.CodVended : null);
             return Ok(new LoginResponseDto
             {
                 Token = token,
                 Cuit = usuario.Username,
-                IsAdmin = true
+                IsAdmin = !esCapitulo,
+                EsCapitulo = esCapitulo,
+                CodVended = esCapitulo ? usuario.CodVended : null,
             });
         }
 
@@ -125,7 +129,7 @@ public class AuthController : ControllerBase
         };
     }
 
-    private string GenerateJwtToken(string identity, bool isAdmin = false)
+    private string GenerateJwtToken(string identity, string? role = null, string? codVended = null)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
         var secretKey = jwtSettings["SecretKey"]!;
@@ -142,8 +146,11 @@ public class AuthController : ControllerBase
             new Claim("cuit", identity)
         };
 
-        if (isAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+        if (!string.IsNullOrEmpty(role))
+            claims.Add(new Claim(ClaimTypes.Role, role));
+
+        if (!string.IsNullOrEmpty(codVended))
+            claims.Add(new Claim("codVended", codVended));
 
         var token = new JwtSecurityToken(
             issuer: issuer,

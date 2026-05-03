@@ -24,6 +24,12 @@ public class TangoSBA05 : TangoEntity
             SetInt("RENGLON", 0);
             SetInt("ID_SBA11", -1);
         }
+
+        Set("LEYENDA", "");
+        Set("COMENTARIO", "");
+        Set("COMENTARIO_EFT", "");
+        SetDate("F_CONC_EFT", new DateTime(1800, 1, 1));
+
     }
 
     /// <summary>Genera UPDATE de saldo en SBA01 (porta TOSBA01 del legacy).</summary>

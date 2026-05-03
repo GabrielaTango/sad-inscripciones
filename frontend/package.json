@@ -16,6 +16,7 @@
     "postcss": "^8.5.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-email-editor": "^1.8.0",
     "react-router-dom": "^7.13.0",
     "react-select": "^5.10.2",
     "tailwind-merge": "^3.5.0",

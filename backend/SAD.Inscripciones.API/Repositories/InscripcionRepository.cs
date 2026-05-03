@@ -130,4 +130,16 @@ public class InscripcionRepository : IInscripcionRepository
 
         return await connection.QueryAsync<DTOs.InscripcionPendienteDto>(sql, new { Documento = documento, EventoId = eventoId });
     }
+
+    public async Task<int> CountPendientesByDocumentoAsync(string documento)
+    {
+        using var connection = _dbFactory.CreateConnection();
+        const string sql = @"
+            SELECT COUNT(*)
+            FROM Inscripciones
+            WHERE Documento = @Documento
+              AND Estado = 'Pendiente'
+              AND DeletedAt IS NULL";
+        return await connection.ExecuteScalarAsync<int>(sql, new { Documento = documento });
+    }
 }

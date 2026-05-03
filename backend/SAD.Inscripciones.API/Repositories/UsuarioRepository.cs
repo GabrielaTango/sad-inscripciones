@@ -39,8 +39,8 @@ public class UsuarioRepository : IUsuarioRepository
     {
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
-            INSERT INTO Usuarios (Username, PasswordHash, NombreCompleto, Email, Activo, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
-            VALUES (@Username, @PasswordHash, @NombreCompleto, @Email, @Activo, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+            INSERT INTO Usuarios (Username, PasswordHash, NombreCompleto, Email, Activo, CodVended, EsCapitulo, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
+            VALUES (@Username, @PasswordHash, @NombreCompleto, @Email, @Activo, @CodVended, @EsCapitulo, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
         return await connection.ExecuteScalarAsync<int>(sql, entity);
     }
@@ -51,7 +51,8 @@ public class UsuarioRepository : IUsuarioRepository
         const string sql = @"
             UPDATE Usuarios
             SET Username = @Username, NombreCompleto = @NombreCompleto, Email = @Email,
-                Activo = @Activo, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
+                Activo = @Activo, CodVended = @CodVended, EsCapitulo = @EsCapitulo,
+                UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
             WHERE Id = @Id AND DeletedAt IS NULL";
         return await connection.ExecuteAsync(sql, entity) > 0;
     }

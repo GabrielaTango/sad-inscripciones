@@ -128,3 +128,19 @@ GO
 
 PRINT 'SyncQueue table and triggers created successfully.';
 GO
+
+-- ============================================================
+-- SyncState: persiste la última versión de Change Tracking
+-- procesada por tabla lógica ("Clientes", "Articulos", etc.)
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SyncState' AND xtype='U')
+CREATE TABLE SyncState (
+    Tabla        VARCHAR(50)  NOT NULL PRIMARY KEY,
+    LastVersion  BIGINT       NOT NULL,
+    UpdatedAt    DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
+PRINT 'SyncState table created successfully.';
+GO
+

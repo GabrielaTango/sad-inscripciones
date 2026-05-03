@@ -9,4 +9,5 @@ public class Pago : BaseEntity
     public string? ReferenciaExterna { get; set; }
     public DateTime? FechaPago { get; set; }
     public string? Observaciones { get; set; }
+    public bool SincronizadoTango { get; set; }
 }

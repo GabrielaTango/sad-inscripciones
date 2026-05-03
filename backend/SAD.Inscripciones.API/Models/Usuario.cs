@@ -7,4 +7,6 @@ public class Usuario : BaseEntity
     public string NombreCompleto { get; set; } = string.Empty;
     public string? Email { get; set; }
     public bool Activo { get; set; } = true;
+    public string? CodVended { get; set; }
+    public bool EsCapitulo { get; set; }
 }

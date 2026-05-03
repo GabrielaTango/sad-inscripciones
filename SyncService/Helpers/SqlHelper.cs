@@ -27,7 +27,7 @@ public static class SqlH
 
     public static string ToString(string? value)
     {
-        if (string.IsNullOrEmpty(value) || value.Equals("null", StringComparison.OrdinalIgnoreCase))
+        if (value == null || value.Equals("null", StringComparison.OrdinalIgnoreCase))
             return "null";
         return $"'{value}'";
     }

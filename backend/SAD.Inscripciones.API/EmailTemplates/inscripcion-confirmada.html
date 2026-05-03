@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirmación de inscripción</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6fa;padding:24px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color:#5D8AC8;padding:28px 32px;text-align:left;">
+                            <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:600;letter-spacing:-0.2px;">
+                                Sociedad Argentina de Diabetes
+                            </h1>
+                            <p style="margin:6px 0 0;color:#dde6f3;font-size:13px;">
+                                Confirmación de inscripción
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding:32px;">
+                            <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">
+                                Hola <strong>{{Nombre}} {{Apellido}}</strong>,
+                            </p>
+                            <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444;">
+                                Tu inscripción fue <strong style="color:#2E7D32;">confirmada</strong>. Te esperamos en el evento.
+                            </p>
+
+                            <!-- Card del evento -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                                   style="background-color:#f8fafc;border:1px solid #e3e8ef;border-radius:6px;margin-bottom:24px;">
+                                <tr>
+                                    <td style="padding:20px 22px;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#5D8AC8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;">
+                                            Evento
+                                        </p>
+                                        <p style="margin:0 0 18px;font-size:18px;font-weight:600;color:#1a1a1a;">
+                                            {{Evento}}
+                                        </p>
+
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td width="50%" style="padding:6px 0;font-size:13px;color:#666;">Fecha</td>
+                                                <td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:500;">{{FechaEvento}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:6px 0;font-size:13px;color:#666;">Lugar</td>
+                                                <td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:500;">{{Lugar}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:6px 0;font-size:13px;color:#666;">N.º de inscripción</td>
+                                                <td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:500;">#{{NumeroInscripcion}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:6px 0;font-size:13px;color:#666;">Importe</td>
+                                                <td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:500;">{{Importe}} ({{Cuotas}} cuota/s)</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#444;">
+                                Conservá este correo como comprobante. Si necesitás contactarnos por cualquier consulta, podés responder a este mismo mail.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color:#f8fafc;padding:18px 32px;border-top:1px solid #e3e8ef;text-align:center;">
+                            <p style="margin:0;font-size:12px;color:#777;">
+                                Sociedad Argentina de Diabetes &middot; Este es un mensaje automático.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

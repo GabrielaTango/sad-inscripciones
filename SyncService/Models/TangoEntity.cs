@@ -6,11 +6,12 @@ namespace SyncService.Models;
 
 /// <summary>
 /// Base para entidades Tango que cargan defaults desde XML y generan INSERT completos.
-/// Porta el patrón Delta5.GVA con Campos/Valores/Insert().
+/// La conversión a SQL se hace según el tipo real de cada columna en SQL Server
+/// (vía TangoSchemaCache, precargado al startup del Worker).
 /// </summary>
 public abstract class TangoEntity
 {
-    protected readonly Dictionary<string, string> _values = new();
+    protected readonly Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
     protected static readonly CultureInfo Culture = new("en-US");
 
     protected abstract string TableName { get; }
@@ -46,7 +47,7 @@ public abstract class TangoEntity
     /// <summary>Sets an integer value.</summary>
     public void SetInt(string field, int value)
     {
-        _values[field] = value.ToString();
+        _values[field] = value.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>Sets a decimal value.</summary>
@@ -64,7 +65,7 @@ public abstract class TangoEntity
     /// <summary>Sets a DateTime value (stored as "dd/MM/yyyy").</summary>
     public void SetDate(string field, DateTime value)
     {
-        _values[field] = value.ToString("dd/MM/yyyy");
+        _values[field] = value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
     }
 
     public string Get(string field) => _values.TryGetValue(field, out var v) ? v : "";
@@ -76,76 +77,89 @@ public abstract class TangoEntity
     protected virtual HashSet<string> ExcludeFromInsert => new();
 
     /// <summary>
-    /// Generates a full INSERT INTO {Table} (col1,col2,...) VALUES (val1,val2,...)
-    /// using all fields from the XML with their current values, excluding identity columns.
+    /// Generates INSERT INTO {Table} (col,...) VALUES (val,...) usando solo las columnas
+    /// que existen en la tabla real (intersección entre _values y schema cacheado).
     /// </summary>
     public string Insert()
     {
-        var fields = _values.Where(kv => !ExcludeFromInsert.Contains(kv.Key)).ToList();
+        if (!TangoSchemaCache.IsLoaded(TableName))
+            throw new InvalidOperationException(
+                $"Schema de tabla {TableName} no precargado en TangoSchemaCache. Asegurar que esté en TablasInsertables y LoadAllAsync se haya ejecutado.");
+
+        var fields = _values
+            .Where(kv => !ExcludeFromInsert.Contains(kv.Key))
+            .Where(kv => TangoSchemaCache.HasColumn(TableName, kv.Key))
+            .ToList();
+
+        if (fields.Count == 0)
+            throw new InvalidOperationException($"Sin campos para insertar en {TableName}");
+
         var campos = string.Join(",\n", fields.Select(kv => kv.Key));
         var valores = string.Join(",\n", fields.Select(kv => FormatValue(kv.Key, kv.Value)));
         return $"INSERT INTO {TableName} (\n{campos}\n) VALUES (\n{valores}\n)";
     }
 
     /// <summary>
-    /// Override in subclasses to provide FK lookups or sequences for specific fields.
-    /// Default: formats based on the raw string value.
+    /// Override en subclases para mapear campos especiales (FK con subquery, sequences, etc.).
+    /// El default usa el tipo SQL real de la columna desde el cache.
     /// </summary>
     protected virtual string FormatValue(string field, string value)
     {
+        if (!TangoSchemaCache.TryGetType(TableName, field, out var sqlType))
+            throw new InvalidOperationException(
+                $"Columna {TableName}.{field} no existe en INFORMATION_SCHEMA. " +
+                $"Revisar XML default o agregar la tabla a TablasInsertables.");
+
+        return FormatBySqlType(sqlType, value);
+    }
+
+    /// <summary>Formatea un valor según el DATA_TYPE de SQL Server.</summary>
+    protected static string FormatBySqlType(string sqlType, string value)
+    {
+        // null/vacío → NULL para todos los tipos.
         if (string.IsNullOrEmpty(value) || value.Equals("null", StringComparison.OrdinalIgnoreCase))
             return "null";
 
-        // Detect type by attempting to parse
-        if (IsDateField(field, value, out var dt))
-            return SqlH.ToDateTime(dt);
+        return sqlType switch
+        {
+            "int" or "smallint" or "tinyint" =>
+                int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
+                    ? i.ToString(CultureInfo.InvariantCulture)
+                    : "null",
+            "bigint" =>
+                long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)
+                    ? l.ToString(CultureInfo.InvariantCulture)
+                    : "null",
 
-        if (IsBoolField(field, value))
-            return value == "1" ? "1" : "0";
+            "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" =>
+                ParseDecimal(value, out var d) ? SqlH.ToDecimal(d) : "null",
 
-        if (IsDecimalField(value, out var dec))
-            return SqlH.ToDecimal(dec);
+            "date" or "datetime" or "datetime2" or "smalldatetime" or "datetimeoffset" =>
+                ParseDate(value, out var dt) ? SqlH.ToDateTime(dt) : "null",
 
-        if (IsIntField(value, out var num))
-            return SqlH.ToInt(num);
+            "bit" => value.Trim() switch { "1" or "true" or "S" or "s" => "1", _ => "0" },
 
-        return SqlH.ToString(value);
+            // Strings — preserva ceros a la izquierda, padding, etc.
+            "char" or "nchar" or "varchar" or "nvarchar" or "text" or "ntext" =>
+                SqlH.ToString(value),
+
+            "uniqueidentifier" => $"'{value}'",
+
+            _ => throw new InvalidOperationException(
+                $"Tipo SQL no soportado: {sqlType} (valor='{value}')"),
+        };
     }
 
-    private static bool IsDateField(string field, string value, out DateTime dt)
+    private static bool ParseDecimal(string value, out decimal d)
     {
-        dt = default;
-        // Only try date parsing for known date fields or values with "/" separator
-        if (!value.Contains('/')) return false;
-        return DateTime.TryParseExact(value, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt);
+        var normalized = value.Replace(",", ".");
+        return decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
     }
 
-    private static bool IsBoolField(string field, string value)
+    private static bool ParseDate(string value, out DateTime dt)
     {
-        return value is "0" or "1" && (
-            field.StartsWith("ES_") || field.StartsWith("EXPORTA") || field.StartsWith("GENERA_") ||
-            field.StartsWith("CLAUSULA") || field.StartsWith("PERMITE_") || field.StartsWith("MON_CTE") ||
-            field.StartsWith("COMP_STK") || field.StartsWith("CANCELADO") || field.StartsWith("FISCAL") ||
-            field.StartsWith("AFECTA_") || field.StartsWith("APLICA_") || field.StartsWith("RG_") ||
-            field.StartsWith("CAL_") || field.StartsWith("RECIBE_") || field.StartsWith("AUT_DE") ||
-            field.StartsWith("PUBLICA_") || field.StartsWith("AUTORIZADO_") || field.StartsWith("INHABILITADO_") ||
-            field.StartsWith("REQUIERE_") || field.StartsWith("HABILITADO") || field.StartsWith("KIT_") ||
-            field.StartsWith("INSUMO_") || field.StartsWith("PROMOCION") || field.StartsWith("CONCILIADO") ||
-            field.StartsWith("CONC_") || field.StartsWith("VA_DIRECTO") || field.StartsWith("CERRADO") ||
-            field.StartsWith("PASE") || field.StartsWith("EXTERNO") || field.StartsWith("TRANSFERENCIA_")
-        );
-    }
-
-    private static bool IsDecimalField(string value, out decimal dec)
-    {
-        dec = 0;
-        if (value.Contains('.') && decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out dec))
+        if (DateTime.TryParseExact(value, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
             return true;
-        return false;
-    }
-
-    private static bool IsIntField(string value, out int num)
-    {
-        return int.TryParse(value, out num);
+        return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt);
     }
 }

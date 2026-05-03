@@ -49,6 +49,16 @@ logs/
 **/appsettings.Production.json
 SyncService/appsettings.json
 
+# Installer (WiX) - artifacts de build
+installer/staging/
+installer/output/
+installer/obj/
+*.msi
+*.wixpdb
+
+# Imágenes subidas por usuarios (no van a git)
+backend/SAD.Inscripciones.API/wwwroot/uploads/email/
+
 # Claude
 .claude/plans/
 .claude/projects/

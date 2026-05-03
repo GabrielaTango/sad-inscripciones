@@ -4,58 +4,89 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SAD Inscripciones is a full-stack membership registration and event management system for the Sociedad Argentina de Diabetes (SAD). It consists of a C# .NET 8 backend API and a React + TypeScript frontend.
+SAD Inscripciones is a full-stack membership and event registration system for the Sociedad Argentina de Diabetes (SAD). The system integrates with the SAD's Tango Gestión ERP (Axoft) via a one-way sync service.
 
-## Build & Run Commands
+Three codebases, one solution:
+- `backend/SAD.Inscripciones.API/` — ASP.NET Core 8 Web API (MySQL)
+- `frontend/` — React 19 + TypeScript + Vite (Tailwind CSS)
+- `SyncService/` — .NET 8 Worker Service that syncs between the API's MySQL and Tango's SQL Server
 
-### Backend (from `backend-sad-inscripciones/SAD.Inscripciones.API/`)
+## Build & Run
+
+### Backend (from `backend/SAD.Inscripciones.API/`)
 ```bash
-dotnet build                # Build the project
-dotnet run                  # Run the API (port 5161)
+dotnet build
+dotnet run                  # Listens on http://localhost:5161 (Swagger at /swagger)
 ```
 
-### Frontend (from `Frontend/`)
+### Frontend (from `frontend/`)
 ```bash
-npm install                 # Install dependencies
-npm run dev                 # Start Vite dev server (localhost:5173)
-npm run build               # TypeScript check + production build
-npm run lint                # Run ESLint
-npm run preview             # Preview production build
+npm install
+npm run dev                 # Vite dev server on port 80 (proxies /api → localhost:5161)
+npm run build               # tsc -b + vite build
+npm run lint                # ESLint
+npm run preview
 ```
 
-No test framework is currently configured for either frontend or backend.
+### SyncService (from `SyncService/`)
+```bash
+dotnet run                  # Background worker, polls on SyncIntervalMinutes (default 30 min)
+```
+
+### Docker (full stack)
+```bash
+docker-compose up           # MySQL + backend + nginx + ngrok tunnel
+```
+
+No test framework is configured in any project.
 
 ## Architecture
 
-### Backend — ASP.NET Core 8 Web API
-
-Uses the **Repository pattern** with **Dapper** (micro-ORM) for direct SQL against SQL Server.
+### Backend — Repository + Service pattern with Dapper
 
 ```
-Controllers → DTOs → Models → Repositories → DbConnectionFactory → SQL Server
+Controller → Service (interface) → Repository (interface) → DbConnectionFactory → MySQL
 ```
 
-- **Controllers**: `AuthController`, `InscripcionesController`, `EventosController`, `ContactoController`
-- **Repositories**: Interface + implementation per entity, injected via DI in `Program.cs`
-- **Auth**: JWT Bearer tokens (8h expiry). CUIT validated against external GVA14 table (Tango accounting system). Only event management endpoints are protected with `[Authorize]`.
-- **Database**: SQL Server with tables `Inscripciones`, `Eventos`, `Contactos`. Schema in `SQL/InitDatabase.sql`.
+- **DbConnectionFactory** (`Data/DbConnectionFactory.cs`) returns a `MySqlConnection`. All SQL is raw Dapper — no EF Core.
+- **Services vs. Repositories**: Repositories are thin SQL layers; services hold business logic (validation, orchestration, MercadoPago calls, etc.). Both are registered scoped in `Program.cs`; `MercadoPagoService` is singleton.
+- **Exception handling**: `ExceptionHandlingMiddleware` is the first middleware. Throw from services; it maps to HTTP responses.
+- **Schema migrations**: Hand-rolled SQL in `SAD.Inscripciones.API/SQL/Migration_*.sql`. Apply manually in order. `InitDatabase.sql` is the baseline.
+- **Admin bootstrap**: `Program.cs` calls `usuarioService.SeedAdminAsync()` on startup.
 
-### Frontend — React 19 + TypeScript + Vite
+### Auth — dual mode, JWT Bearer (8h)
 
-- **Routing**: React Router DOM with pages at `/`, `/nosotros`, `/eventos`, `/inscripcion`, `/contacto`, `/login`
-- **Auth state**: React Context (`AuthContext`) stores JWT token and CUIT in localStorage (`sad_token`, `sad_cuit` keys)
-- **Styling**: Bootstrap 5 with custom CSS variables (`--sad-primary: #1a5276`, `--sad-secondary: #2e86c1`, `--sad-accent: #48c9b0`) defined in `index.css`
-- **Page components**: Named with `Page` suffix (e.g., `LoginPage.tsx`)
+`AuthController.Login` tries two paths in order:
+1. **Internal admin**: `Usuarios` table, BCrypt-hashed passwords → JWT with role `Admin`.
+2. **Socio (CUIT-based)**: requires `Usuario == Password` and a matching `Cuit` row in the `Clientes` table (populated from Tango's GVA14) → JWT without admin role.
 
-### Key Dependencies
+Authorization policy `"Admin"` gates admin endpoints. The `cuit` claim identifies the socio on `/api/auth/socio-data`, `/api/resumen-cuenta`, etc.
 
-**Backend (NuGet):** Dapper, Microsoft.AspNetCore.Authentication.JwtBearer, Microsoft.Data.SqlClient, Swashbuckle
-**Frontend (npm):** react 19, react-router-dom 7, bootstrap 5, vite 7, typescript 5.9
+### SyncService — bidirectional Tango ↔ MySQL bridge
 
-## Development Notes
+The sync is one `Worker` loop with four phases per tick:
 
-- CORS is configured for `http://localhost:5173` only — the frontend dev server
-- Backend API base URL is hardcoded in frontend fetch calls as `http://localhost:5161`
-- The `EventosPage` currently uses a hardcoded events list instead of fetching from the API
-- C# uses file-scoped namespaces and nullable reference types
-- TypeScript strict mode is enabled
+1. **Tango → MySQL (pull)**: Uses SQL Server **Change Tracking** on `GVA14` (clientes), `STA11` (artículos), `GVA18` (provincias), `GVA12` (comprobantes), `GVA07` (imputaciones). `ChangeTrackingService.Tables` is the source of truth for which tables are tracked and how their business keys are composed. Version cursors are persisted in a `SyncState` table on the Tango database. For each change, `Worker.UpsertAsync` reads the current row from Tango and POSTs to `/api/sync/{entity}` on the backend.
+2. **MySQL → Tango (push inscripciones)**: Backend exposes `GET /api/sync/inscripciones` for confirmed-but-not-yet-synced registrations. `TangoInscripcionService` writes them into Tango (pedido / factura / recibo — see `InscripcionSync` section of `SyncService/appsettings.json` for talonario and vendor codes). Success → `PATCH /api/sync/inscripciones/{id}/tango` marks it synced.
+3. **MySQL → Tango (push pagos)**: Same flow via `TangoPagoService`.
+4. **Pending imputaciones**: `TangoImputacionService.EjecutarPendientesAsync` processes any deferred imputaciones.
+
+Shared auth: both directions use the `X-Sync-Key` header (value from `SyncSettings:ApiKey` on backend, `ApiSettings:SyncKey` on SyncService). The backend-side `/api/sync/*` endpoints all call `ValidateApiKey()` — they are NOT JWT-protected.
+
+Change Tracking setup SQL for the Tango DB lives at `scripts/sqlserver-sync-setup.sql` (creates `SyncQueue` + triggers as a legacy/alternative trigger-based path; the worker itself uses native CT via `ChangeTrackingService`).
+
+### Frontend — React Router + Context auth
+
+- **Routing**: Public pages (`/`, `/eventos`, `/inscripcion/:eventoId`, `/login`, etc.) + protected `/admin/*` tree wrapped in `<ProtectedRoute>` + `<AdminLayout>`. See `src/App.tsx` for the full map.
+- **Auth state**: `context/AuthContext.tsx` persists token / cuit / isAdmin flag to localStorage (`sad_token`, `sad_cuit`, `sad_is_admin`). All API calls go through `services/api.ts`, which attaches the bearer token and redirects to `/login` on 401.
+- **API base**: `services/api.ts` uses `/api` (relative). In dev, Vite proxies `/api` → `localhost:5161`. In prod, nginx handles the proxy.
+- **Styling**: Tailwind CSS with a custom blue palette in `tailwind.config.js` (primary `#5D8AC8`, accent `#F5A623`). CSS variables drive border/ring/background tokens (shadcn-style). Not Bootstrap.
+- **Service modules**: One per domain entity under `src/services/` — each wraps `api.ts` and returns typed results from `src/types/`.
+
+## Cross-cutting Notes
+
+- **CUIT is the universal socio identifier** — it lives in the JWT, in the `Clientes` table (mirrored from Tango's GVA14 via sync), and is what `ResumenCuentaController` joins on.
+- **MercadoPago webhook**: `MercadoPagoWebhookController` receives async payment notifications → updates `Pagos` → the SyncService later pushes the payment to Tango.
+- Two talonario / vendor config blocks live in `SyncService/appsettings.json` under `InscripcionSync` — these are Tango-specific IDs that must match the target Tango company database.
+- The backend API URL `http://localhost:5161` is the dev default; ngrok URL `waspy-clarissa-elatedly.ngrok-free.dev` is whitelisted for CORS and used as the MercadoPago callback host in docker-compose.
+- C# uses file-scoped namespaces and nullable reference types. TypeScript has strict mode on. Path alias `@/*` → `src/*` in the frontend.

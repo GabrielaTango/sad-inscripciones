@@ -137,4 +137,49 @@ public class MercadoPagoService : IMercadoPagoService
             return null;
         }
     }
+
+    public async Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarTodosPagosPorReferenciaAsync(string externalReference)
+    {
+        var result = new List<MercadoPagoPaymentInfo>();
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", MercadoPagoConfig.AccessToken);
+
+            var url = $"https://api.mercadopago.com/v1/payments/search?external_reference={externalReference}&sort=date_created&criteria=asc";
+            var response = await httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("MP Search API respondio {Status} para ref={Ref}", response.StatusCode, externalReference);
+                return result;
+            }
+
+            var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            var results = json.GetProperty("results");
+
+            for (var i = 0; i < results.GetArrayLength(); i++)
+            {
+                var p = results[i];
+                result.Add(new MercadoPagoPaymentInfo
+                {
+                    Id = p.GetProperty("id").GetInt64(),
+                    Status = p.GetProperty("status").GetString() ?? string.Empty,
+                    StatusDetail = p.GetProperty("status_detail").GetString() ?? string.Empty,
+                    TransactionAmount = p.GetProperty("transaction_amount").GetDecimal(),
+                    ExternalReference = p.TryGetProperty("external_reference", out var extRef) ? extRef.GetString() : null,
+                    PaymentMethodId = p.TryGetProperty("payment_method_id", out var pmId) ? pmId.GetString() : null,
+                });
+            }
+
+            _logger.LogInformation("MP BuscarTodos: {Count} pagos para ref={Ref}", result.Count, externalReference);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error al buscar pagos por referencia {Ref}", externalReference);
+            return result;
+        }
+    }
 }

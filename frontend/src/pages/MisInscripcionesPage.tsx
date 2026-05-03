@@ -36,7 +36,9 @@ const MisInscripcionesPage = () => {
 
   useEffect(() => {
     if (isAuthenticated && cuit) {
-      searchByDoc(cuit)
+      inscripcionesService.validarPendientes()
+        .catch(() => { /* no bloquear si falla la validación */ })
+        .finally(() => searchByDoc(cuit))
     }
   }, [isAuthenticated, cuit, searchByDoc])
 

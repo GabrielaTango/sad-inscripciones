@@ -21,4 +21,9 @@ public class UsuarioCreateDto
     public string? Email { get; set; }
 
     public bool Activo { get; set; } = true;
+
+    [MaxLength(20)]
+    public string? CodVended { get; set; }
+
+    public bool EsCapitulo { get; set; }
 }

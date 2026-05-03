@@ -1,0 +1,51 @@
+ public List<GVA07> TraerImputacionesPendientes()
+ {
+     List<GVA07> cImpu = new List<GVA07>();
+
+     string sql = @"SELECT FAC.LEYENDA_2 AS INSCRIP
+                     ,FAC.T_COMP AS T_COMP,FAC.N_COMP,FAC.IMPORTE,REC.T_COMP AS T_COMP_CAN
+                     ,REC.N_COMP AS N_COMP_CAN,REC.IMPORTE  AS IMPORT_CAN 
+                     ,GVA46.FECHA_VTO
+                     ,REC.ID_GVA12 AS ID_GVA12_CAN
+                     ,FAC.ID_GVA12 AS ID_GVA12_FAC
+                     FROM GVA12 FAC
+                     INNER JOIN GVA46
+                     ON GVA46.T_COMP = FAC.T_COMP
+                     AND  GVA46.N_COMP = FAC.N_COMP
+                     INNER JOIN GVA12 REC
+                     ON FAC.LEYENDA_2 = REC.LEYENDA_2
+                     AND REC.T_COMP = 'REC'
+                     WHERE FAC.LEYENDA_1 = 'FACINSCRIP' AND FAC.LEYENDA_2 <> '' 
+                     AND FAC.ESTADO = 'PEN' AND REC.ESTADO = 'CTA'
+                     ";
+
+     db.CrearComando(sql);
+     DataTable dt = new DataTable();
+
+     DbDataReader dr = db.EjecutarConsulta();
+
+     dt.Load(dr);
+
+     for( int i = 0; i < dt.Rows.Count; i++ )
+     {
+         GVA07 impu = new GVA07();
+
+         impu.FECHA_VTO = (DateTime)dt.Rows[i]["FECHA_VTO"];
+         impu.F_COMP_CAN = DateTime.Now.Date;
+         impu.T_COMP = dt.Rows[i]["T_COMP"].ToString();
+         impu.N_COMP = dt.Rows[i]["N_COMP"].ToString();
+         impu.IMPORTE_VT = (decimal)dt.Rows[i]["IMPORTE"];
+         impu.IMP_VT_UNI = (decimal)dt.Rows[i]["IMPORTE"];
+         impu.T_COMP_CAN = dt.Rows[i]["T_COMP_CAN"].ToString();
+         impu.N_COMP_CAN = dt.Rows[i]["N_COMP_CAN"].ToString();
+         impu.IMPORT_CAN = (decimal)dt.Rows[i]["IMPORT_CAN"];
+         
+         impu.ID_GVA12_CAN = (int)dt.Rows[i]["ID_GVA12_CAN"];
+         impu.ID_GVA12_FAC = (int)dt.Rows[i]["ID_GVA12_FAC"];
+
+
+         cImpu.Add(impu);
+     }
+
+     return cImpu;
+ }

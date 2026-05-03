@@ -12,17 +12,20 @@ public class MercadoPagoWebhookController : ControllerBase
     private readonly IMercadoPagoService _mpService;
     private readonly IPagoRepository _pagoRepository;
     private readonly IInscripcionRepository _inscripcionRepository;
+    private readonly IInscripcionService _inscripcionService;
     private readonly ILogger<MercadoPagoWebhookController> _logger;
 
     public MercadoPagoWebhookController(
         IMercadoPagoService mpService,
         IPagoRepository pagoRepository,
         IInscripcionRepository inscripcionRepository,
+        IInscripcionService inscripcionService,
         ILogger<MercadoPagoWebhookController> logger)
     {
         _mpService = mpService;
         _pagoRepository = pagoRepository;
         _inscripcionRepository = inscripcionRepository;
+        _inscripcionService = inscripcionService;
         _logger = logger;
     }
 
@@ -108,7 +111,8 @@ public class MercadoPagoWebhookController : ControllerBase
 
         if (estadoInscripcion != inscripcion.Estado)
         {
-            await _inscripcionRepository.UpdateEstadoAsync(inscripcionId, estadoInscripcion, "mercadopago");
+            // Pasamos por el service para que dispare side-effects (cupones, mail).
+            await _inscripcionService.UpdateEstadoAsync(inscripcionId, estadoInscripcion, "mercadopago");
         }
 
         _logger.LogInformation("Pago MP {PaymentId} procesado: estado={Estado} inscripcion={InscripcionId}",

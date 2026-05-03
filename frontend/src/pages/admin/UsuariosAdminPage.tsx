@@ -4,13 +4,16 @@ import DataTable from '../../components/Admin/DataTable'
 import FormModal from '../../components/Admin/FormModal'
 import ConfirmDialog from '../../components/Admin/ConfirmDialog'
 import { usuariosService } from '../../services/usuariosService'
+import { vendedoresService } from '../../services/vendedoresService'
+import type { VendedorAdmin } from '../../services/vendedoresService'
 import type { Usuario, UsuarioCreateForm, UsuarioUpdateForm } from '../../types/models'
 
-const emptyCreateForm: UsuarioCreateForm = { username: '', password: '', nombreCompleto: '', email: '', activo: true }
-const emptyUpdateForm: UsuarioUpdateForm = { username: '', nombreCompleto: '', email: '', activo: true }
+const emptyCreateForm: UsuarioCreateForm = { username: '', password: '', nombreCompleto: '', email: '', activo: true, codVended: null, esCapitulo: false }
+const emptyUpdateForm: UsuarioUpdateForm = { username: '', nombreCompleto: '', email: '', activo: true, codVended: null, esCapitulo: false }
 
 const UsuariosAdminPage = () => {
   const [data, setData] = useState<Usuario[]>([])
+  const [vendedores, setVendedores] = useState<VendedorAdmin[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -25,7 +28,12 @@ const UsuariosAdminPage = () => {
   const [passwordError, setPasswordError] = useState('')
 
   const load = useCallback(async () => {
-    setData(await usuariosService.getAll())
+    const [users, vends] = await Promise.all([
+      usuariosService.getAll(),
+      vendedoresService.getAll().catch(() => [] as VendedorAdmin[]),
+    ])
+    setData(users)
+    setVendedores(vends)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -43,6 +51,8 @@ const UsuariosAdminPage = () => {
       nombreCompleto: item.nombreCompleto,
       email: item.email || '',
       activo: item.activo,
+      codVended: item.codVended ?? null,
+      esCapitulo: item.esCapitulo,
     })
     setEditId(item.id)
     setError('')
@@ -114,6 +124,14 @@ const UsuariosAdminPage = () => {
     { key: 'username', label: 'Usuario' },
     { key: 'nombreCompleto', label: 'Nombre Completo' },
     { key: 'email', label: 'Email' },
+    {
+      key: 'capitulo',
+      label: 'Capítulo',
+      render: (item: Usuario) =>
+        item.esCapitulo
+          ? <span className="badge bg-blue-100 text-blue-700">{item.codVended || '—'}</span>
+          : <span className="text-slate-400">—</span>,
+    },
     {
       key: 'activo',
       label: 'Activo',
@@ -226,6 +244,52 @@ const UsuariosAdminPage = () => {
           />
           <label className="text-sm" htmlFor="activo">Activo</label>
         </div>
+
+        <div className="form-check mt-3">
+          <input
+            type="checkbox"
+            className="form-check-input"
+            id="esCapitulo"
+            checked={editId ? updateForm.esCapitulo : createForm.esCapitulo}
+            onChange={(e) => {
+              const checked = e.target.checked
+              if (editId)
+                setUpdateForm({ ...updateForm, esCapitulo: checked, codVended: checked ? updateForm.codVended : null })
+              else
+                setCreateForm({ ...createForm, esCapitulo: checked, codVended: checked ? createForm.codVended : null })
+            }}
+          />
+          <label className="text-sm" htmlFor="esCapitulo">Es capítulo (puede registrar cobros)</label>
+        </div>
+
+        {(editId ? updateForm.esCapitulo : createForm.esCapitulo) && (
+          <div className="mb-3 mt-2">
+            <label className="form-label">Código de vendedor (Tango) *</label>
+            <select
+              className="form-input"
+              value={(editId ? updateForm.codVended : createForm.codVended) ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null
+                editId
+                  ? setUpdateForm({ ...updateForm, codVended: v })
+                  : setCreateForm({ ...createForm, codVended: v })
+              }}
+              required
+            >
+              <option value="">Seleccionar vendedor...</option>
+              {vendedores.map(v => (
+                <option key={v.codVended} value={v.codVended}>
+                  {v.codVended} (cuotas {v.ctaCuotas} / a cuenta {v.ctaOtra})
+                </option>
+              ))}
+            </select>
+            {vendedores.length === 0 && (
+              <p className="text-xs text-amber-700 mt-1">
+                No hay vendedores sincronizados desde Tango. Verificar el SyncService.
+              </p>
+            )}
+          </div>
+        )}
       </FormModal>
 
       {/* Delete Confirm */}

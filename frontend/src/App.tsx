@@ -4,6 +4,10 @@ import Navbar from './components/Navbar/Navbar'
 import Footer from './components/Footer/Footer'
 import ProtectedRoute from './components/Admin/ProtectedRoute'
 import AdminLayout from './components/Admin/AdminLayout'
+import CapituloRoute from './components/Capitulo/CapituloRoute'
+import CapituloLayout from './components/Capitulo/CapituloLayout'
+import CobrosPage from './pages/capitulo/CobrosPage'
+import MisCobrosPage from './pages/capitulo/MisCobrosPage'
 import HomePage from './pages/HomePage'
 import NosotrosPage from './pages/NosotrosPage'
 import EventosPage from './pages/EventosPage'
@@ -26,6 +30,9 @@ import PromocionesAdminPage from './pages/admin/PromocionesAdminPage'
 import PromocionCuponesPage from './pages/admin/PromocionCuponesPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import PagosCuentaCorrienteAdminPage from './pages/admin/PagosCuentaCorrienteAdminPage'
+import ConfiguracionEmailPage from './pages/admin/ConfiguracionEmailPage'
+import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
+import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 
 function App() {
   return (
@@ -44,6 +51,11 @@ function App() {
             <Route path="/resumen-cuenta" element={<ResumenCuentaPage />} />
             <Route path="/pago/resultado" element={<PagoResultadoPage />} />
 
+            <Route path="/capitulo" element={<CapituloRoute><CapituloLayout /></CapituloRoute>}>
+              <Route index element={<CobrosPage />} />
+              <Route path="historial" element={<MisCobrosPage />} />
+            </Route>
+
             <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
               <Route index element={<DashboardPage />} />
               <Route path="tipos-evento" element={<TiposEventoPage />} />
@@ -59,6 +71,9 @@ function App() {
               <Route path="promociones/:promocionId/cupones" element={<PromocionCuponesPage />} />
               <Route path="usuarios" element={<UsuariosAdminPage />} />
               <Route path="pagos-cuenta-corriente" element={<PagosCuentaCorrienteAdminPage />} />
+              <Route path="configuracion-email" element={<ConfiguracionEmailPage />} />
+              <Route path="email-templates" element={<EmailTemplatesListPage />} />
+              <Route path="email-templates/:codigo" element={<EmailTemplateEditorPage />} />
             </Route>
           </Routes>
         </main>

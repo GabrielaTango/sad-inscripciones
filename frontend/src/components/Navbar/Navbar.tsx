@@ -1,17 +1,36 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { UserCheck, Settings, LogOut, UserPlus, ChevronDown } from 'lucide-react'
+import { UserCheck, Settings, LogOut, UserPlus, ChevronDown, CreditCard } from 'lucide-react'
 import logo from '../../assets/logo70.png'
+import { inscripcionesService } from '../../services/inscripcionesService'
+import { resumenCuentaService } from '../../services/resumenCuentaService'
 
 const Navbar = () => {
-  const { isAuthenticated, isAdmin, cuit, logout } = useAuth()
+  const { isAuthenticated, isAdmin, esCapitulo, cuit, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [inscripcionesPendientes, setInscripcionesPendientes] = useState(0)
+  const [resumenCount, setResumenCount] = useState(0)
 
-  const isAdminRoute = location.pathname.startsWith('/admin')
+  const isAdminRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/capitulo')
+
+  useEffect(() => {
+    if (!isAuthenticated || esCapitulo) {
+      setInscripcionesPendientes(0)
+      setResumenCount(0)
+      return
+    }
+    Promise.all([
+      inscripcionesService.countPendientes().catch(() => ({ count: 0 })),
+      resumenCuentaService.getCount().catch(() => ({ count: 0 })),
+    ]).then(([insc, res]) => {
+      setInscripcionesPendientes(insc.count)
+      setResumenCount(res.count)
+    })
+  }, [isAuthenticated, esCapitulo, location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -20,6 +39,13 @@ const Navbar = () => {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `text-slate-600 hover:text-blue-600 transition-colors font-medium ${isActive ? 'text-blue-600' : ''}`
+
+  const badge = (count: number) =>
+    count > 0 ? (
+      <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-500 rounded-full min-w-[1.25rem]">
+        {count}
+      </span>
+    ) : null
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
@@ -41,13 +67,22 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center space-x-8">
             <NavLink className={navLinkClass} to="/">Inicio</NavLink>
-            <NavLink className={navLinkClass} to="/nosotros">Nosotros</NavLink>
             <NavLink className={navLinkClass} to="/eventos">Eventos</NavLink>
-            <NavLink className={navLinkClass} to="/mis-inscripciones">Inscripciones</NavLink>
-            {isAuthenticated && (
-              <NavLink className={navLinkClass} to="/resumen-cuenta">Cuenta Corriente</NavLink>
+            {!esCapitulo && (
+              <NavLink className={navLinkClass} to="/mis-inscripciones">
+                Inscripciones{badge(inscripcionesPendientes)}
+              </NavLink>
             )}
-            <NavLink className={navLinkClass} to="/contacto">Contacto</NavLink>
+            {isAuthenticated && !esCapitulo && (
+              <NavLink className={navLinkClass} to="/resumen-cuenta">
+                Cuenta Corriente{badge(resumenCount)}
+              </NavLink>
+            )}
+            {esCapitulo && (
+              <NavLink className={navLinkClass} to="/capitulo">
+                Cobros
+              </NavLink>
+            )}
 
             {isAuthenticated ? (
               <div className="relative">
@@ -68,6 +103,15 @@ const Navbar = () => {
                         onClick={() => setDropdownOpen(false)}
                       >
                         <Settings className="w-4 h-4" />Admin
+                      </Link>
+                    )}
+                    {esCapitulo && (
+                      <Link
+                        to="/capitulo"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <CreditCard className="w-4 h-4" />Capítulo
                       </Link>
                     )}
                     <button
@@ -100,19 +144,33 @@ const Navbar = () => {
           <div className="lg:hidden py-4 border-t border-slate-100">
             <div className="flex flex-col space-y-3">
               <NavLink className={navLinkClass} to="/" onClick={() => setMobileOpen(false)}>Inicio</NavLink>
-              <NavLink className={navLinkClass} to="/nosotros" onClick={() => setMobileOpen(false)}>Nosotros</NavLink>
               <NavLink className={navLinkClass} to="/eventos" onClick={() => setMobileOpen(false)}>Eventos</NavLink>
-              <NavLink className={navLinkClass} to="/mis-inscripciones" onClick={() => setMobileOpen(false)}>Inscripciones</NavLink>
-              {isAuthenticated && (
-                <NavLink className={navLinkClass} to="/resumen-cuenta" onClick={() => setMobileOpen(false)}>Cuenta Corriente</NavLink>
+              {!esCapitulo && (
+                <NavLink className={navLinkClass} to="/mis-inscripciones" onClick={() => setMobileOpen(false)}>
+                  Inscripciones{badge(inscripcionesPendientes)}
+                </NavLink>
               )}
-              <NavLink className={navLinkClass} to="/contacto" onClick={() => setMobileOpen(false)}>Contacto</NavLink>
+              {isAuthenticated && !esCapitulo && (
+                <NavLink className={navLinkClass} to="/resumen-cuenta" onClick={() => setMobileOpen(false)}>
+                  Cuenta Corriente{badge(resumenCount)}
+                </NavLink>
+              )}
+              {esCapitulo && (
+                <NavLink className={navLinkClass} to="/capitulo" onClick={() => setMobileOpen(false)}>
+                  Cobros
+                </NavLink>
+              )}
 
               {isAuthenticated ? (
                 <div className="pt-2 space-y-2 border-t border-slate-100 mt-2">
                   {isAdmin && (
                     <Link to="/admin/eventos" className="block text-slate-600 hover:text-blue-600 transition-colors font-medium py-2" onClick={() => setMobileOpen(false)}>
                       <Settings className="w-4 h-4 inline mr-2" />Admin
+                    </Link>
+                  )}
+                  {esCapitulo && (
+                    <Link to="/capitulo" className="block text-slate-600 hover:text-blue-600 transition-colors font-medium py-2" onClick={() => setMobileOpen(false)}>
+                      <CreditCard className="w-4 h-4 inline mr-2" />Capítulo
                     </Link>
                   )}
                   <button className="block text-slate-600 hover:text-blue-600 transition-colors font-medium py-2" onClick={() => { setMobileOpen(false); handleLogout() }}>

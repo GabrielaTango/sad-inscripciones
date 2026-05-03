@@ -15,4 +15,5 @@ public interface IInscripcionRepository
     Task<bool> UpdateEstadoAsync(int id, string estado, string updatedBy);
     Task<bool> SoftDeleteAsync(int id, string deletedBy);
     Task<IEnumerable<DTOs.InscripcionPendienteDto>> GetPendientesByDocumentoAsync(string documento, int? eventoId);
+    Task<int> CountPendientesByDocumentoAsync(string documento);
 }

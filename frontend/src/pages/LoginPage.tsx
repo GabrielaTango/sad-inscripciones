@@ -30,8 +30,16 @@ const LoginPage = () => {
       }
 
       const data = await response.json()
-      login(data.token, data.cuit, data.isAdmin ?? false)
-      navigate(data.isAdmin ? '/admin' : '/')
+      login({
+        token: data.token,
+        cuit: data.cuit,
+        isAdmin: data.isAdmin ?? false,
+        esCapitulo: data.esCapitulo ?? false,
+        codVended: data.codVended ?? null,
+      })
+      if (data.esCapitulo) navigate('/capitulo')
+      else if (data.isAdmin) navigate('/admin')
+      else navigate('/resumen-cuenta')
     } catch {
       setError('Error de conexión con el servidor.')
     } finally {

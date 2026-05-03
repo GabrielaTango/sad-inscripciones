@@ -31,6 +31,8 @@ public class UsuariosController : ControllerBase
             u.NombreCompleto,
             u.Email,
             u.Activo,
+            u.CodVended,
+            u.EsCapitulo,
             u.CreatedAt,
             u.UpdatedAt
         }));
@@ -47,6 +49,8 @@ public class UsuariosController : ControllerBase
             u.NombreCompleto,
             u.Email,
             u.Activo,
+            u.CodVended,
+            u.EsCapitulo,
             u.CreatedAt,
             u.UpdatedAt
         });
@@ -55,12 +59,17 @@ public class UsuariosController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] UsuarioCreateDto dto)
     {
+        if (dto.EsCapitulo && string.IsNullOrWhiteSpace(dto.CodVended))
+            return BadRequest(new { error = "Si el usuario es capítulo, el código de vendedor es requerido." });
+
         var entity = new Usuario
         {
             Username = dto.Username,
             NombreCompleto = dto.NombreCompleto,
             Email = dto.Email,
             Activo = dto.Activo,
+            CodVended = string.IsNullOrWhiteSpace(dto.CodVended) ? null : dto.CodVended.Trim(),
+            EsCapitulo = dto.EsCapitulo,
             CreatedBy = GetCurrentUser(),
             UpdatedBy = GetCurrentUser()
         };
@@ -73,13 +82,18 @@ public class UsuariosController : ControllerBase
             entity.Username,
             entity.NombreCompleto,
             entity.Email,
-            entity.Activo
+            entity.Activo,
+            entity.CodVended,
+            entity.EsCapitulo,
         });
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] UsuarioUpdateDto dto)
     {
+        if (dto.EsCapitulo && string.IsNullOrWhiteSpace(dto.CodVended))
+            return BadRequest(new { error = "Si el usuario es capítulo, el código de vendedor es requerido." });
+
         var entity = new Usuario
         {
             Id = id,
@@ -87,6 +101,8 @@ public class UsuariosController : ControllerBase
             NombreCompleto = dto.NombreCompleto,
             Email = dto.Email,
             Activo = dto.Activo,
+            CodVended = string.IsNullOrWhiteSpace(dto.CodVended) ? null : dto.CodVended.Trim(),
+            EsCapitulo = dto.EsCapitulo,
             UpdatedBy = GetCurrentUser()
         };
 

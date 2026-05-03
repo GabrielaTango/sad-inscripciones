@@ -258,6 +258,8 @@ export interface Usuario extends BaseEntity {
   nombreCompleto: string
   email?: string | null
   activo: boolean
+  codVended?: string | null
+  esCapitulo: boolean
 }
 
 export interface UsuarioCreateForm {
@@ -266,6 +268,8 @@ export interface UsuarioCreateForm {
   nombreCompleto: string
   email?: string
   activo: boolean
+  codVended?: string | null
+  esCapitulo: boolean
 }
 
 export interface UsuarioUpdateForm {
@@ -273,6 +277,8 @@ export interface UsuarioUpdateForm {
   nombreCompleto: string
   email?: string
   activo: boolean
+  codVended?: string | null
+  esCapitulo: boolean
 }
 
 export interface ResumenCuenta {
@@ -301,5 +307,62 @@ export interface BecaEventoForm {
   cantidadTotalCodigos: number
   fechaVencimiento?: string
   acumulable: boolean
+  activo: boolean
+}
+
+export interface ConfiguracionEmail {
+  host: string
+  port: number
+  enableSsl: boolean
+  usuario: string
+  fromEmail: string
+  fromName: string
+  replyTo?: string | null
+  bccCopia?: string | null
+  asunto: string
+  activo: boolean
+  ignorarCertificadoSsl: boolean
+  tienePassword: boolean
+  updatedAt?: string
+  updatedBy?: string | null
+}
+
+export interface ConfiguracionEmailForm {
+  host: string
+  port: number
+  enableSsl: boolean
+  usuario: string
+  password?: string
+  fromEmail: string
+  fromName: string
+  replyTo?: string | null
+  bccCopia?: string | null
+  asunto: string
+  activo: boolean
+  ignorarCertificadoSsl: boolean
+}
+
+export interface EmailTemplateListItem {
+  codigo: string
+  nombre: string
+  activo: boolean
+  updatedAt: string
+}
+
+export interface EmailTemplate {
+  codigo: string
+  nombre: string
+  asunto: string
+  bodyHtml: string
+  bodyJson?: string | null
+  activo: boolean
+  updatedAt: string
+  updatedBy?: string | null
+}
+
+export interface EmailTemplateForm {
+  asunto: string
+  bodyHtml: string
+  bodyJson?: string | null
   activo: boolean
 }

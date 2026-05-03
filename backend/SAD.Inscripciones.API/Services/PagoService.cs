@@ -9,11 +9,16 @@ public class PagoService : IPagoService
 {
     private readonly IPagoRepository _repository;
     private readonly IInscripcionRepository _inscripcionRepository;
+    private readonly IInscripcionService _inscripcionService;
 
-    public PagoService(IPagoRepository repository, IInscripcionRepository inscripcionRepository)
+    public PagoService(
+        IPagoRepository repository,
+        IInscripcionRepository inscripcionRepository,
+        IInscripcionService inscripcionService)
     {
         _repository = repository;
         _inscripcionRepository = inscripcionRepository;
+        _inscripcionService = inscripcionService;
     }
 
     public async Task<IEnumerable<Pago>> GetAllAsync() => await _repository.GetAllAsync();
@@ -44,9 +49,10 @@ public class PagoService : IPagoService
 
         await _repository.UpdateAsync(pago);
 
+        // Pasamos por el service para que dispare side-effects (cupones, mail).
         if (estadoPago == "Confirmado")
         {
-            await _inscripcionRepository.UpdateEstadoAsync(pago.InscripcionId, "Confirmada", updatedBy);
+            await _inscripcionService.UpdateEstadoAsync(pago.InscripcionId, "Confirmada", updatedBy);
         }
     }
 

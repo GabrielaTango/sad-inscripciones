@@ -13,6 +13,7 @@ public interface IMercadoPagoService
     Task<MercadoPagoPreferenceResult> CrearPreferenciaAsync(Inscripcion inscripcion, string eventoTitulo, int cuotas = 1, decimal? montoOverride = null);
     Task<MercadoPagoPaymentInfo?> ObtenerInfoPagoAsync(long paymentId);
     Task<MercadoPagoPaymentInfo?> BuscarPagoPorReferenciaAsync(string externalReference);
+    Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarTodosPagosPorReferenciaAsync(string externalReference);
 }
 
 public class MercadoPagoPaymentInfo

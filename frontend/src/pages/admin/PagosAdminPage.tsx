@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Check, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Check, X, Filter } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
 import FormModal from '../../components/Admin/FormModal'
 import { pagosService } from '../../services/pagosService'
 import type { Pago, PagoForm } from '../../types/models'
 
 const PagosAdminPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const inscripcionIdFilter = searchParams.get('inscripcionId')
   const [data, setData] = useState<Pago[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -13,10 +16,20 @@ const PagosAdminPage = () => {
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    setData(await pagosService.getAll())
-  }, [])
+    if (inscripcionIdFilter) {
+      setData(await pagosService.getByInscripcionId(Number(inscripcionIdFilter)))
+    } else {
+      setData(await pagosService.getAll())
+    }
+  }, [inscripcionIdFilter])
 
   useEffect(() => { load() }, [load])
+
+  const clearFilter = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('inscripcionId')
+    setSearchParams(next, { replace: true })
+  }
 
   const handleEstado = async (id: number, estado: string) => {
     try { await pagosService.updateEstado(id, estado); await load() }
@@ -48,9 +61,21 @@ const PagosAdminPage = () => {
     <div>
       <div className="flex justify-between items-center mb-4">
         <h2 className="font-bold text-slate-800">Pagos</h2>
-        <button className="btn-primary" onClick={() => { setForm({ inscripcionId: 0, medioPago: '', monto: 0 }); setError(''); setShowForm(true) }}><Plus className="w-4 h-4 mr-1 inline" />Nuevo Pago</button>
+        <button className="btn-primary" onClick={() => { setForm({ inscripcionId: Number(inscripcionIdFilter) || 0, medioPago: '', monto: 0 }); setError(''); setShowForm(true) }}><Plus className="w-4 h-4 mr-1 inline" />Nuevo Pago</button>
       </div>
       {error && <div className="alert-danger">{error}</div>}
+
+      {inscripcionIdFilter && (
+        <div className="alert-info flex items-center justify-between mb-3">
+          <span className="flex items-center gap-2">
+            <Filter className="w-4 h-4" />
+            Filtrando por inscripcion ID: <strong>{inscripcionIdFilter}</strong>
+          </span>
+          <button className="btn-outline-secondary btn-sm" onClick={clearFilter}>
+            <X className="w-4 h-4 inline mr-1" />Quitar filtro
+          </button>
+        </div>
+      )}
 
       <DataTable
         data={data as unknown as Record<string, unknown>[]}

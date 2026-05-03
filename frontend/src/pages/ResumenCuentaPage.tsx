@@ -9,8 +9,6 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Hourglass,
-  Check,
   CheckSquare,
   CreditCard,
   Info,
@@ -49,7 +47,9 @@ const ResumenCuentaPage = () => {
       navigate('/login')
       return
     }
-    loadData()
+    resumenCuentaService.validarPendientes()
+      .catch(() => { /* no bloquear si falla la validación */ })
+      .finally(loadData)
   }, [isAuthenticated, navigate, loadData])
 
   // Handle MP return — MP sends collection_status/collection_id on auto_return, or status on back_urls
@@ -68,7 +68,7 @@ const ResumenCuentaPage = () => {
             setPagoResultado({
               status: 'success',
               message: result.estadoPago === 'Aprobado'
-                ? 'El pago fue registrado exitosamente. La imputacion se vera reflejada en su resumen de cuenta en las proximas horas.'
+                ? 'El pago fue registrado exitosamente.'
                 : 'El pago esta siendo procesado. La imputacion se vera reflejada en su resumen de cuenta una vez confirmado.'
             })
             loadData()
@@ -76,7 +76,7 @@ const ResumenCuentaPage = () => {
           .catch(() => {
             setPagoResultado({
               status: 'success',
-              message: 'El pago fue registrado. La imputacion se vera reflejada en su resumen de cuenta en las proximas horas.'
+              message: 'El pago fue registrado.'
             })
             loadData()
           })
@@ -103,15 +103,6 @@ const ResumenCuentaPage = () => {
     [sorted, selectedIds]
   )
 
-  const pagosPendientes = useMemo(
-    () => pagos.filter(p => p.estadoPago === 'Pendiente'),
-    [pagos]
-  )
-
-  const pagosAprobados = useMemo(
-    () => pagos.filter(p => p.estadoPago === 'Aprobado'),
-    [pagos]
-  )
 
   const handleToggle = (index: number) => {
     const item = sorted[index]
@@ -176,44 +167,6 @@ const ResumenCuentaPage = () => {
       )}
 
       {error && <div className="alert-danger">{error}</div>}
-
-      {/* Pagos pendientes de imputacion */}
-      {pagosPendientes.length > 0 && (
-        <div className="alert-info mb-4">
-          <h6 className="text-base font-bold flex items-center gap-2">
-            <Hourglass className="w-5 h-5" />Pagos pendientes de imputacion
-          </h6>
-          <p className="mb-2 text-sm">Los siguientes pagos fueron registrados y se veran reflejados en su resumen de cuenta una vez procesada la imputacion.</p>
-          {pagosPendientes.map(p => (
-            <div key={p.id} className="flex justify-between items-center bg-white rounded-2xl px-3 py-2 mb-1">
-              <span className="text-sm flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                {formatDate(p.createdAt)} - Ref: {p.externalReference}
-              </span>
-              <span className="font-bold text-blue-600">{formatCurrency(p.monto)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagos aprobados recientes */}
-      {pagosAprobados.length > 0 && (
-        <div className="alert-success mb-4">
-          <h6 className="text-base font-bold flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />Pagos registrados
-          </h6>
-          <p className="mb-2 text-sm">Estos pagos fueron aprobados. La imputacion se vera reflejada en su resumen de cuenta en las proximas horas.</p>
-          {pagosAprobados.slice(0, 5).map(p => (
-            <div key={p.id} className="flex justify-between items-center bg-white rounded-2xl px-3 py-2 mb-1">
-              <span className="text-sm flex items-center gap-1">
-                <Check className="w-4 h-4 text-green-600" />
-                {formatDate(p.fechaPago || p.createdAt)}
-              </span>
-              <span className="font-bold text-green-600">{formatCurrency(p.monto)}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Comprobantes pendientes */}
       {movimientos.length === 0 ? (

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using SyncService.Helpers;
 using SyncService.Models;
 using SyncService.Services;
 
@@ -14,12 +15,27 @@ public class Worker : BackgroundService
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
     private readonly TangoInscripcionService _tangoInscripcionService;
+    private readonly TangoPagoService _tangoPagoService;
+    private readonly TangoImputacionService _tangoImputacionService;
+    private readonly TangoResumenCuentaService _tangoResumenCuentaService;
+    private readonly ChangeTrackingService _ctService;
 
-    public Worker(ILogger<Worker> logger, IConfiguration config, TangoInscripcionService tangoInscripcionService)
+    public Worker(
+        ILogger<Worker> logger,
+        IConfiguration config,
+        TangoInscripcionService tangoInscripcionService,
+        TangoPagoService tangoPagoService,
+        TangoImputacionService tangoImputacionService,
+        TangoResumenCuentaService tangoResumenCuentaService,
+        ChangeTrackingService ctService)
     {
         _logger = logger;
         _config = config;
         _tangoInscripcionService = tangoInscripcionService;
+        _tangoPagoService = tangoPagoService;
+        _tangoImputacionService = tangoImputacionService;
+        _tangoResumenCuentaService = tangoResumenCuentaService;
+        _ctService = ctService;
         _http = new HttpClient();
         _http.BaseAddress = new Uri(_config["ApiSettings:BaseUrl"]!);
         _http.DefaultRequestHeaders.Add("X-Sync-Key", _config["ApiSettings:SyncKey"]);
@@ -27,8 +43,11 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var interval = _config.GetValue<int>("SyncIntervalSeconds", 30);
+        var interval = _config.GetValue<int>("SyncIntervalMinutes", 60) * 60; //Convert to Seconds
         _logger.LogInformation("SyncService iniciado. Intervalo: {Interval}s, API: {Url}", interval, _config["ApiSettings:BaseUrl"]);
+
+        await EnsureChangeTrackingAsync(stoppingToken);
+        await EnsureTangoSchemaCacheAsync(stoppingToken);
 
         // Full sync on first run
         //await FullSyncAsync();
@@ -37,11 +56,11 @@ public class Worker : BackgroundService
         {
             try
             {
-                await ProcessQueueAsync();
+                await ProcessChangeTrackingAsync(stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error procesando SyncQueue");
+                _logger.LogError(ex, "Error procesando Change Tracking");
             }
 
             try
@@ -53,44 +72,237 @@ public class Worker : BackgroundService
                 _logger.LogError(ex, "Error sincronizando inscripciones a Tango");
             }
 
+            try
+            {
+                await SyncPagosAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sincronizando pagos a Tango");
+            }
+
+            try
+            {
+                await _tangoImputacionService.EjecutarPendientesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error ejecutando imputaciones pendientes en Tango");
+            }
+
+            try
+            {
+                await SyncPagosCuentaCorrienteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sincronizando pagos de cuenta corriente a Tango");
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken);
         }
     }
 
-    private async Task ProcessQueueAsync()
+    private async Task SyncPagosAsync()
     {
-        using var conn = new SqlConnection(_config["SqlServerConnection"]);
+        var response = await _http.GetAsync("/api/sync/pagos");
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("GET /api/sync/pagos returned {Status}", response.StatusCode);
+            return;
+        }
 
-        var items = (await conn.QueryAsync<SyncQueueItem>(
-            "SELECT TOP 100 Id, Tabla, Operacion, ClaveValor FROM SyncQueue WHERE Procesado = 0 ORDER BY Id")).ToList();
+        var pagos = await response.Content.ReadFromJsonAsync<List<PagoTangoDto>>();
+        if (pagos == null || pagos.Count == 0) return;
 
-        if (items.Count == 0) return;
+        _logger.LogInformation("Procesando {Count} pagos pendientes de sync a Tango", pagos.Count);
 
-        _logger.LogInformation("Procesando {Count} items de SyncQueue", items.Count);
-
-        foreach (var item in items)
+        foreach (var pago in pagos)
         {
             try
             {
-                if (item.Operacion == "DELETE")
-                {
-                    await DeleteAsync(item.Tabla, item.ClaveValor);
-                }
-                else
-                {
-                    await UpsertAsync(conn, item.Tabla, item.ClaveValor);
-                }
+                using var conn = new SqlConnection(_config["SqlServerConnection"]);
+                var ok = await _tangoPagoService.ProcesarPagoAsync(conn, pago);
 
-                await conn.ExecuteAsync("UPDATE SyncQueue SET Procesado = 1 WHERE Id = @Id", new { item.Id });
+                if (ok)
+                {
+                    var patch = await _http.PatchAsync(
+                        $"/api/sync/pagos/{pago.Id}/tango",
+                        new StringContent("", Encoding.UTF8, "application/json"));
+
+                    if (!patch.IsSuccessStatusCode)
+                        _logger.LogWarning("No se pudo marcar pago {Id} como sincronizado: {Status}", pago.Id, patch.StatusCode);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sync item {Id}: {Tabla}/{Op}/{Clave}", item.Id, item.Tabla, item.Operacion, item.ClaveValor);
+                _logger.LogError(ex, "Error procesando pago {Id} (insc {InscId})", pago.Id, pago.InscripcionId);
+            }
+        }
+    }
+
+    private async Task SyncPagosCuentaCorrienteAsync()
+    {
+        var response = await _http.GetAsync("/api/sync/pagos-cuenta-corriente");
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("GET /api/sync/pagos-cuenta-corriente returned {Status}", response.StatusCode);
+            return;
+        }
+
+        var pagos = await response.Content.ReadFromJsonAsync<List<PagoCuentaCorrienteTangoDto>>();
+        if (pagos == null || pagos.Count == 0) return;
+
+        _logger.LogInformation("Procesando {Count} pagos CC pendientes de sync a Tango", pagos.Count);
+
+        foreach (var pago in pagos)
+        {
+            try
+            {
+                using var conn = new SqlConnection(_config["SqlServerConnection"]);
+                var (ok, montoImputado) = await _tangoResumenCuentaService.ProcesarPagoAsync(conn, pago);
+
+                if (ok)
+                {
+                    var patch = await _http.PatchAsync(
+                        $"/api/sync/pagos-cuenta-corriente/{pago.Id}/tango",
+                        new StringContent(
+                            JsonSerializer.Serialize(new { montoImputado }),
+                            Encoding.UTF8, "application/json"));
+
+                    if (!patch.IsSuccessStatusCode)
+                        _logger.LogWarning("No se pudo marcar pago CC {Id} como sincronizado: {Status}", pago.Id, patch.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando pago CC {Id} (cuit {Cuit})", pago.Id, pago.Cuit);
+            }
+        }
+    }
+
+    private async Task EnsureTangoSchemaCacheAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var conn = new SqlConnection(_config["SqlServerConnection"]);
+            await conn.OpenAsync(ct);
+            await TangoSchemaCache.LoadAllAsync(conn, ct);
+            _logger.LogInformation("TangoSchemaCache cargado para {Count} tablas", TangoSchemaCache.TablasInsertables.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error precargando TangoSchemaCache. Los INSERTs de Tango van a fallar hasta resolver esto.");
+        }
+    }
+
+    private async Task EnsureChangeTrackingAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _ctService.EnsureSyncStateTableAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No se pudo crear/validar la tabla SyncState");
+        }
+
+        foreach (var logical in ChangeTrackingService.Tables.Keys)
+        {
+            try
+            {
+                await _ctService.EnsureChangeTrackingEnabledAsync(logical, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo habilitar Change Tracking para {Table}", logical);
+            }
+        }
+    }
+
+    private async Task ProcessChangeTrackingAsync(CancellationToken ct)
+    {
+        using var conn = new SqlConnection(_config["SqlServerConnection"]);
+        await conn.OpenAsync(ct);
+
+        foreach (var logical in ChangeTrackingService.Tables.Keys)
+        {
+            try
+            {
+                await ProcessTableAsync(conn, logical, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando CT para {Table}", logical);
+            }
+        }
+    }
+
+    private async Task ProcessTableAsync(SqlConnection conn, string logical, CancellationToken ct)
+    {
+        var lastVersion = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT LastVersion FROM SyncState WHERE Tabla = @Tabla",
+            new { Tabla = logical },
+            cancellationToken: ct));
+
+        if (lastVersion is null)
+        {
+            var current = await _ctService.GetCurrentVersionAsync(ct) ?? 0L;
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO SyncState (Tabla, LastVersion) VALUES (@Tabla, @Version)",
+                new { Tabla = logical, Version = current },
+                cancellationToken: ct));
+            _logger.LogInformation("SyncState inicializado para {Table} en v{Version}", logical, current);
+            return;
+        }
+
+        if (!await _ctService.IsVersionValidAsync(logical, lastVersion.Value, ct))
+        {
+            var current = await _ctService.GetCurrentVersionAsync(ct) ?? 0L;
+            _logger.LogWarning(
+                "LastVersion {Old} de {Table} es inválida (retención CT expirada). Reseteando a v{New}; se pierde el historial intermedio.",
+                lastVersion, logical, current);
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE SyncState SET LastVersion = @Version, UpdatedAt = SYSUTCDATETIME() WHERE Tabla = @Tabla",
+                new { Tabla = logical, Version = current },
+                cancellationToken: ct));
+            return;
+        }
+
+        var changes = await _ctService.GetChangesAsync(logical, lastVersion.Value, ct);
+        if (changes.Count == 0) return;
+
+        var dispatchTable = logical switch
+        {
+            "CuentaCorrienteComprobantes" or "CuentaCorrienteImputaciones" => "CuentaCorriente",
+            _ => logical
+        };
+
+        var deduped = changes
+            .GroupBy(c => c.ClaveValor)
+            .Select(g => g.OrderByDescending(c => c.Version).First())
+            .ToList();
+
+        _logger.LogInformation("CT {Table}: {Unique} cambios únicos ({Total} raw) desde v{Version}",
+            logical, deduped.Count, changes.Count, lastVersion);
+
+        foreach (var change in deduped)
+        {
+            try
+            {
+                await UpsertAsync(conn, dispatchTable, change.ClaveValor);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sync CT {Table}/{Clave}", logical, change.ClaveValor);
             }
         }
 
-        // Limpiar procesados de más de 7 días
-        await conn.ExecuteAsync("DELETE FROM SyncQueue WHERE Procesado = 1 AND FechaCreacion < DATEADD(DAY, -7, GETDATE())");
+        var maxVersion = changes.Max(c => c.Version);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE SyncState SET LastVersion = @Version, UpdatedAt = SYSUTCDATETIME() WHERE Tabla = @Tabla",
+            new { Tabla = logical, Version = maxVersion },
+            cancellationToken: ct));
     }
 
     private async Task UpsertAsync(SqlConnection conn, string tabla, string clave)
@@ -99,10 +311,10 @@ public class Worker : BackgroundService
         {
             case "Clientes":
                 var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>(
-                    "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin FROM GVA14 WHERE CUIT = @Clave",
+                    "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended FROM GVA14 WHERE CUIT = @Clave",
                     new { Clave = clave });
                 if (cliente != null)
-                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim() });
+                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim() });
                 break;
 
             case "Articulos":
@@ -124,19 +336,29 @@ public class Worker : BackgroundService
             case "CuentaCorriente":
                 await SyncCuentaCorrienteAsync(conn, clave);
                 break;
-        }
-    }
 
-    private async Task DeleteAsync(string tabla, string clave)
-    {
-        var endpoint = tabla switch
-        {
-            "Clientes" => $"/api/sync/clientes/{Uri.EscapeDataString(clave)}",
-            "Articulos" => $"/api/sync/articulos/{Uri.EscapeDataString(clave)}",
-            "Provincias" => $"/api/sync/provincias/{Uri.EscapeDataString(clave)}",
-            _ => throw new InvalidOperationException($"Tabla desconocida: {tabla}")
-        };
-        await _http.DeleteAsync(endpoint);
+            case "Vendedores":
+                var vendedor = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                    SELECT
+                        COD_VENDED AS CodVended,
+                        ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_CAJA)[1]', 'INT'), 0) AS CtaCaja,
+                        ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_TRANSFERENCIA)[1]', 'INT'), 0) AS CtaTransferencia,
+                        ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_CUOTAS)[1]', 'INT'), 0) AS CtaCuotas,
+                        ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_OTRA)[1]', 'INT'), 0) AS CtaOtra
+                    FROM GVA23
+                    WHERE COD_VENDED = @Clave",
+                    new { Clave = clave });
+                if (vendedor != null)
+                    await PostAsync("/api/sync/vendedores", new
+                    {
+                        codVended = ((string)vendedor.CodVended).Trim(),
+                        ctaCaja = (int)vendedor.CtaCaja,
+                        ctaTransferencia = (int)vendedor.CtaTransferencia,
+                        ctaCuotas = (int)vendedor.CtaCuotas,
+                        ctaOtra = (int)vendedor.CtaOtra,
+                    });
+                break;
+        }
     }
 
     private async Task PostAsync(string url, object data)
@@ -199,70 +421,135 @@ public class Worker : BackgroundService
         _logger.LogInformation("CuentaCorriente sync: cuit={Cuit}, movimientos={Count}", cuit, movimientos.Length);
     }
 
+    private const int FullSyncBatchSize = 500;
+    private const int FullSyncCcParallelism = 8;
+
     private async Task FullSyncAsync()
     {
         _logger.LogInformation("Ejecutando sincronizacion completa...");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         using var conn = new SqlConnection(_config["SqlServerConnection"]);
 
         try
         {
-            // Provincias
-            var provincias = await conn.QueryAsync<dynamic>(
-                "SELECT COD_PROVIN AS Codigo, NOMBRE_PRO AS Nombre FROM GVA18");
-            var provCount = 0;
-            foreach (var p in provincias)
-            {
-                await PostAsync("/api/sync/provincias", new { codigo = (string)p.Codigo?.ToString().Trim(), nombre = (string)p.Nombre?.ToString().Trim() });
-                provCount++;
-            }
-            _logger.LogInformation("Provincias sincronizadas: {Count}", provCount);
+            // Provincias (batch)
+            var provincias = (await conn.QueryAsync<dynamic>(
+                "SELECT COD_PROVIN AS Codigo, NOMBRE_PRO AS Nombre FROM GVA18"))
+                .Select(p => new
+                {
+                    codigo = ((string?)p.Codigo?.ToString())?.Trim(),
+                    nombre = ((string?)p.Nombre?.ToString())?.Trim(),
+                })
+                .Where(p => !string.IsNullOrEmpty(p.codigo))
+                .ToList();
+            await PostBatchedAsync("/api/sync/provincias-batch", provincias, "Provincias");
 
-            // Clientes
-            var clientes = await conn.QueryAsync<dynamic>(
-                "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''");
-            var cliCount = 0;
-            foreach (var c in clientes)
-            {
-                await PostAsync("/api/sync/clientes", new { cuit = (string)c.Cuit?.ToString().Trim(), razonSoci = (string)c.RazonSoci?.ToString().Trim(), domicilio = (string?)c.Domicilio?.ToString().Trim(), codPostal = (string?)c.CodPostal?.ToString().Trim(), codProvin = (string?)c.CodProvin?.ToString().Trim() });
-                cliCount++;
-            }
-            _logger.LogInformation("Clientes sincronizados: {Count}", cliCount);
+            // Clientes (batch)
+            var clientes = (await conn.QueryAsync<dynamic>(
+                "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
+                .Select(c => new
+                {
+                    cuit = ((string?)c.Cuit?.ToString())?.Trim(),
+                    razonSoci = ((string?)c.RazonSoci?.ToString())?.Trim(),
+                    domicilio = ((string?)c.Domicilio?.ToString())?.Trim(),
+                    codPostal = ((string?)c.CodPostal?.ToString())?.Trim(),
+                    codProvin = ((string?)c.CodProvin?.ToString())?.Trim(),
+                    codVended = ((string?)c.CodVended?.ToString())?.Trim(),
+                })
+                .Where(c => !string.IsNullOrEmpty(c.cuit))
+                .ToList();
+            await PostBatchedAsync("/api/sync/clientes-batch", clientes, "Clientes");
 
-            // Articulos
-            var articulos = await conn.QueryAsync<dynamic>(
-                "SELECT COD_ARTICU AS CodArticu, DESCRIPCIO AS Descripcio FROM STA11 WHERE COD_ARTICU IS NOT NULL AND COD_ARTICU != ''");
-            var artCount = 0;
-            foreach (var a in articulos)
-            {
-                await PostAsync("/api/sync/articulos", new { codArticu = (string)a.CodArticu?.ToString().Trim(), descripcio = (string)a.Descripcio?.ToString().Trim() });
-                artCount++;
-            }
-            _logger.LogInformation("Articulos sincronizados: {Count}", artCount);
+            // Articulos (batch)
+            var articulos = (await conn.QueryAsync<dynamic>(
+                "SELECT COD_ARTICU AS CodArticu, DESCRIPCIO AS Descripcio FROM STA11 WHERE COD_ARTICU IS NOT NULL AND COD_ARTICU != ''"))
+                .Select(a => new
+                {
+                    codArticu = ((string?)a.CodArticu?.ToString())?.Trim(),
+                    descripcio = ((string?)a.Descripcio?.ToString())?.Trim(),
+                })
+                .Where(a => !string.IsNullOrEmpty(a.codArticu))
+                .ToList();
+            await PostBatchedAsync("/api/sync/articulos-batch", articulos, "Articulos");
 
-            // Cuenta Corriente — por cada cliente con comprobantes
-            var clientesCuenta = await conn.QueryAsync<dynamic>(
-                "SELECT DISTINCT GVA12.COD_CLIENT, GVA14.CUIT FROM GVA12 INNER JOIN GVA14 ON GVA14.COD_CLIENT = GVA12.COD_CLIENT WHERE GVA14.CUIT IS NOT NULL AND GVA14.CUIT != '' AND SALDO_CC <> 0");
+            // Vendedores (batch)
+            var vendedores = (await conn.QueryAsync<dynamic>(@"
+                SELECT
+                    COD_VENDED AS CodVended,
+                    ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_CAJA)[1]', 'INT'), 0) AS CtaCaja,
+                    ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_TRANSFERENCIA)[1]', 'INT'), 0) AS CtaTransferencia,
+                    ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_CUOTAS)[1]', 'INT'), 0) AS CtaCuotas,
+                    ISNULL(CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1118_CTA_OTRA)[1]', 'INT'), 0) AS CtaOtra
+                FROM GVA23
+                WHERE COD_VENDED IS NOT NULL AND COD_VENDED <> ''"))
+                .Select(v => new
+                {
+                    codVended = ((string)v.CodVended).Trim(),
+                    ctaCaja = (int)v.CtaCaja,
+                    ctaTransferencia = (int)v.CtaTransferencia,
+                    ctaCuotas = (int)v.CtaCuotas,
+                    ctaOtra = (int)v.CtaOtra,
+                })
+                .ToList();
+            await PostBatchedAsync("/api/sync/vendedores-batch", vendedores, "Vendedores");
+
+            // Cuenta Corriente — query pesada por cliente, paralelizamos
+            var clientesCuenta = (await conn.QueryAsync<dynamic>(
+                "SELECT DISTINCT GVA12.COD_CLIENT, GVA14.CUIT FROM GVA12 INNER JOIN GVA14 ON GVA14.COD_CLIENT = GVA12.COD_CLIENT WHERE GVA14.CUIT IS NOT NULL AND GVA14.CUIT != '' AND SALDO_CC <> 0"))
+                .Select(cc => new
+                {
+                    CodClient = ((string)cc.COD_CLIENT).Trim(),
+                    Cuit = ((string)cc.CUIT).Trim(),
+                })
+                .ToList();
+
+            var connStr = _config["SqlServerConnection"]!;
             var ccCount = 0;
-            foreach (var cc in clientesCuenta)
-            {
-                try
+            await Parallel.ForEachAsync(
+                clientesCuenta,
+                new ParallelOptions { MaxDegreeOfParallelism = FullSyncCcParallelism },
+                async (cc, ct) =>
                 {
-                    await SyncResumenClienteAsync(conn, ((string)cc.COD_CLIENT).Trim(), ((string)cc.CUIT).Trim());
-                    ccCount++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error sync cuenta corriente cliente {Cuit}", (string)cc.CUIT);
-                }
-            }
-            _logger.LogInformation("Cuentas corrientes sincronizadas: {Count}", ccCount);
+                    try
+                    {
+                        await using var localConn = new SqlConnection(connStr);
+                        await localConn.OpenAsync(ct);
+                        await SyncResumenClienteAsync(localConn, cc.CodClient, cc.Cuit);
+                        Interlocked.Increment(ref ccCount);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error sync cuenta corriente cliente {Cuit}", cc.Cuit);
+                    }
+                });
+            _logger.LogInformation("Cuentas corrientes sincronizadas: {Count} de {Total}", ccCount, clientesCuenta.Count);
 
-            _logger.LogInformation("Sincronizacion completa finalizada.");
+            sw.Stop();
+            _logger.LogInformation("Sincronizacion completa finalizada en {Elapsed}.", sw.Elapsed);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error en sincronizacion completa");
         }
+    }
+
+    private async Task PostBatchedAsync<T>(string url, IReadOnlyList<T> items, string label)
+    {
+        if (items.Count == 0)
+        {
+            _logger.LogInformation("{Label} sincronizados: 0", label);
+            return;
+        }
+
+        var total = 0;
+        for (var i = 0; i < items.Count; i += FullSyncBatchSize)
+        {
+            var chunk = items.Skip(i).Take(FullSyncBatchSize).ToArray();
+            await PostAsync(url, chunk);
+            total += chunk.Length;
+            _logger.LogDebug("{Label} batch enviado: {Sent}/{Total}", label, total, items.Count);
+        }
+        _logger.LogInformation("{Label} sincronizados: {Count}", label, total);
     }
 
     private async Task SyncInscripcionesAsync()
@@ -305,12 +592,4 @@ public class Worker : BackgroundService
             }
         }
     }
-}
-
-internal class SyncQueueItem
-{
-    public int Id { get; set; }
-    public string Tabla { get; set; } = string.Empty;
-    public string Operacion { get; set; } = string.Empty;
-    public string ClaveValor { get; set; } = string.Empty;
 }

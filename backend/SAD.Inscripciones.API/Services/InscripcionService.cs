@@ -18,6 +18,7 @@ public class InscripcionService : IInscripcionService
     private readonly IBecaEventoRepository _becaEventoRepository;
     private readonly IPromocionCuponRepository _promocionCuponRepository;
     private readonly IPromocionCuponService _promocionCuponService;
+    private readonly IEmailService _emailService;
     private readonly DbConnectionFactory _dbFactory;
 
     public InscripcionService(
@@ -30,6 +31,7 @@ public class InscripcionService : IInscripcionService
         IBecaEventoRepository becaEventoRepository,
         IPromocionCuponRepository promocionCuponRepository,
         IPromocionCuponService promocionCuponService,
+        IEmailService emailService,
         DbConnectionFactory dbFactory)
     {
         _repository = repository;
@@ -41,6 +43,7 @@ public class InscripcionService : IInscripcionService
         _becaEventoRepository = becaEventoRepository;
         _promocionCuponRepository = promocionCuponRepository;
         _promocionCuponService = promocionCuponService;
+        _emailService = emailService;
         _dbFactory = dbFactory;
     }
 
@@ -253,11 +256,17 @@ public class InscripcionService : IInscripcionService
     public async Task UpdateEstadoAsync(int id, string estado, string updatedBy)
     {
         var inscripcion = await GetByIdAsync(id);
+        var estadoAnterior = inscripcion.Estado;
+
+        if (estadoAnterior == estado) return;
+
         await _repository.UpdateEstadoAsync(id, estado, updatedBy);
+        inscripcion.Estado = estado;
 
         if (estado == "Confirmada")
         {
             await _promocionCuponService.GenerarCuponesParaInscripcionAsync(inscripcion);
+            await _emailService.EnviarConfirmacionInscripcionAsync(inscripcion);
         }
     }
 
@@ -270,5 +279,10 @@ public class InscripcionService : IInscripcionService
     public async Task<IEnumerable<DTOs.InscripcionPendienteDto>> GetPendientesByDocumentoAsync(string documento, int? eventoId)
     {
         return await _repository.GetPendientesByDocumentoAsync(documento, eventoId);
+    }
+
+    public async Task<int> CountPendientesByDocumentoAsync(string documento)
+    {
+        return await _repository.CountPendientesByDocumentoAsync(documento);
     }
 }

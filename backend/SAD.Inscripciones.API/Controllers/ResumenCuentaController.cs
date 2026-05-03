@@ -38,11 +38,71 @@ public class ResumenCuentaController : ControllerBase
             return Unauthorized();
 
         using var conn = _dbFactory.CreateConnection();
+
+        var locked = await GetLockedComprobantesAsync(conn, cuit);
+
         var movimientos = await conn.QueryAsync<ResumenCuentaDto>(
             "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit ORDER BY FechaVto ASC",
             new { Cuit = cuit });
 
-        return Ok(movimientos);
+        var filtrados = locked.Count == 0
+            ? movimientos
+            : movimientos.Where(m => !locked.Contains(LockKey(m.TComp, m.NComp, m.FechaVto)));
+
+        return Ok(filtrados);
+    }
+
+    [HttpGet("count")]
+    public async Task<IActionResult> GetCount()
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+
+        var locked = await GetLockedComprobantesAsync(conn, cuit);
+
+        var movimientos = await conn.QueryAsync<ResumenCuentaDto>(
+            "SELECT TComp, NComp, FechaVto FROM ResumenCuenta WHERE Cuit = @Cuit",
+            new { Cuit = cuit });
+
+        var count = locked.Count == 0
+            ? movimientos.Count()
+            : movimientos.Count(m => !locked.Contains(LockKey(m.TComp, m.NComp, m.FechaVto)));
+
+        return Ok(new { count });
+    }
+
+    private static string LockKey(string? tComp, string? nComp, DateTime fechaVto)
+        => $"{tComp?.Trim()}|{nComp?.Trim()}|{fechaVto:yyyy-MM-dd}";
+
+    private async Task<HashSet<string>> GetLockedComprobantesAsync(System.Data.IDbConnection conn, string cuit)
+    {
+        var lockedJson = await conn.QueryAsync<string>(@"
+            SELECT Comprobantes
+            FROM PagosCuentaCorriente
+            WHERE Cuit = @Cuit AND EstadoPago IN ('Pendiente', 'Aprobado')",
+            new { Cuit = cuit });
+
+        var locked = new HashSet<string>();
+        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        foreach (var json in lockedJson)
+        {
+            if (string.IsNullOrEmpty(json)) continue;
+            try
+            {
+                var items = JsonSerializer.Deserialize<List<ComprobanteRef>>(json, jsonOptions);
+                if (items == null) continue;
+                foreach (var item in items)
+                    locked.Add(LockKey(item.TComp, item.NComp, item.FechaVto));
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "JSON inválido en PagosCuentaCorriente.Comprobantes para CUIT {Cuit}", cuit);
+            }
+        }
+        return locked;
     }
 
     [HttpGet("pagos")]
@@ -140,6 +200,84 @@ public class ResumenCuentaController : ControllerBase
             initPoint = preference.InitPoint,
             total,
             externalReference,
+        });
+    }
+
+    [HttpPost("validar-pendientes")]
+    public async Task<IActionResult> ValidarPendientes()
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+
+        var eliminados = await conn.ExecuteAsync(@"
+            DELETE FROM PagosCuentaCorriente
+            WHERE Cuit = @Cuit
+              AND EstadoPago = 'Pendiente'
+              AND CreatedAt < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)",
+            new { Cuit = cuit });
+
+        var pendientes = (await conn.QueryAsync<PagoCuentaCorrienteDto>(@"
+            SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago, MpPaymentId, FechaPago, CreatedAt
+            FROM PagosCuentaCorriente
+            WHERE Cuit = @Cuit
+              AND EstadoPago = 'Pendiente'
+              AND CreatedAt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)",
+            new { Cuit = cuit })).ToList();
+
+        var aprobados = 0;
+        var rechazados = 0;
+
+        foreach (var pago in pendientes)
+        {
+            MercadoPagoPaymentInfo? mpInfo;
+            try
+            {
+                mpInfo = await _mpService.BuscarPagoPorReferenciaAsync(pago.ExternalReference);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error consultando MP para pago {Id} ref={Ref}", pago.Id, pago.ExternalReference);
+                continue;
+            }
+
+            if (mpInfo == null) continue;
+
+            var nuevoEstado = mpInfo.Status switch
+            {
+                "approved" => "Aprobado",
+                "rejected" => "Rechazado",
+                _ => "Pendiente"
+            };
+
+            if (nuevoEstado == "Pendiente") continue;
+
+            await conn.ExecuteAsync(@"
+                UPDATE PagosCuentaCorriente
+                SET EstadoPago = @Estado,
+                    MpPaymentId = @MpId,
+                    FechaPago = CASE WHEN @Estado = 'Aprobado' THEN UTC_TIMESTAMP() ELSE FechaPago END,
+                    UpdatedAt = UTC_TIMESTAMP()
+                WHERE Id = @Id",
+                new { Estado = nuevoEstado, MpId = mpInfo.Id, Id = pago.Id });
+
+            if (nuevoEstado == "Aprobado") aprobados++;
+            else rechazados++;
+        }
+
+        _logger.LogInformation(
+            "ValidarPendientes CUIT={Cuit}: eliminados={Del}, revisados={Rev}, aprobados={Apr}, rechazados={Rech}",
+            cuit, eliminados, pendientes.Count, aprobados, rechazados);
+
+        return Ok(new
+        {
+            eliminados,
+            revisados = pendientes.Count,
+            aprobados,
+            rechazados,
+            pendientes = pendientes.Count - aprobados - rechazados,
         });
     }
 
@@ -324,4 +462,11 @@ public class ConfirmarPagoCCRequest
 {
     public long? PaymentId { get; set; }
     public string? ExternalReference { get; set; }
+}
+
+internal class ComprobanteRef
+{
+    public string? TComp { get; set; }
+    public string? NComp { get; set; }
+    public DateTime FechaVto { get; set; }
 }
