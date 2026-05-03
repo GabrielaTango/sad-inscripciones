@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.Data;
 
@@ -262,6 +263,59 @@ public class SyncController : ControllerBase
         return Ok();
     }
 
+    // --- TRIGGER MANUAL DE FULL SYNC ---
+
+    [HttpPost("trigger")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> TriggerFullSync()
+    {
+        var usuario = User.Identity?.Name ?? User.FindFirst("sub")?.Value ?? "admin";
+        using var conn = _dbFactory.CreateConnection();
+        await conn.ExecuteAsync(@"
+            UPDATE SyncTrigger
+            SET RequestedAt = UTC_TIMESTAMP(), RequestedBy = @RequestedBy
+            WHERE Id = 1",
+            new { RequestedBy = usuario });
+        return Ok(new { requestedAt = DateTime.UtcNow });
+    }
+
+    [HttpGet("trigger/status")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> GetTriggerStatus()
+    {
+        using var conn = _dbFactory.CreateConnection();
+        var row = await conn.QueryFirstOrDefaultAsync<SyncTriggerStatusDto>(
+            "SELECT RequestedAt, RequestedBy, ConsumedAt FROM SyncTrigger WHERE Id = 1");
+        return Ok(row ?? new SyncTriggerStatusDto());
+    }
+
+    [HttpGet("trigger")]
+    public async Task<IActionResult> ConsumeTrigger()
+    {
+        if (!ValidateApiKey()) return Unauthorized();
+        using var conn = _dbFactory.CreateConnection();
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        var pending = await conn.QueryFirstOrDefaultAsync<DateTime?>(
+            "SELECT RequestedAt FROM SyncTrigger WHERE Id = 1 AND RequestedAt IS NOT NULL FOR UPDATE",
+            transaction: tx);
+
+        if (pending is null)
+        {
+            tx.Commit();
+            return Ok(new { pending = false });
+        }
+
+        await conn.ExecuteAsync(@"
+            UPDATE SyncTrigger
+            SET ConsumedAt = UTC_TIMESTAMP(), RequestedAt = NULL
+            WHERE Id = 1",
+            transaction: tx);
+        tx.Commit();
+        return Ok(new { pending = true, requestedAt = pending });
+    }
+
     // --- CUENTA CORRIENTE ---
 
     [HttpPost("cuenta-corriente")]
@@ -389,4 +443,11 @@ public class SyncPagoCuentaCorrienteDto
 public class MarcarPagoCCSyncDto
 {
     public decimal MontoImputado { get; set; }
+}
+
+public class SyncTriggerStatusDto
+{
+    public DateTime? RequestedAt { get; set; }
+    public string? RequestedBy { get; set; }
+    public DateTime? ConsumedAt { get; set; }
 }

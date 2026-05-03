@@ -44,64 +44,107 @@ public class Worker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = _config.GetValue<int>("SyncIntervalMinutes", 60) * 60; //Convert to Seconds
-        _logger.LogInformation("SyncService iniciado. Intervalo: {Interval}s, API: {Url}", interval, _config["ApiSettings:BaseUrl"]);
+        var triggerPollSeconds = _config.GetValue<int>("TriggerPollSeconds", 30);
+        _logger.LogInformation(
+            "SyncService iniciado. Intervalo ciclo: {Interval}s, poll trigger: {Poll}s, API: {Url}",
+            interval, triggerPollSeconds, _config["ApiSettings:BaseUrl"]);
 
         await EnsureChangeTrackingAsync(stoppingToken);
         await EnsureTangoSchemaCacheAsync(stoppingToken);
 
-        // Full sync on first run
-        //await FullSyncAsync();
+        var nextCycleAt = DateTime.UtcNow;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await ProcessChangeTrackingAsync(stoppingToken);
+                if (await IsFullSyncTriggeredAsync(stoppingToken))
+                {
+                    _logger.LogInformation("Full sync solicitado por trigger manual.");
+                    await FullSyncAsync();
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error procesando Change Tracking");
+                _logger.LogError(ex, "Error chequeando/ejecutando trigger de full sync");
+            }
+
+            if (DateTime.UtcNow >= nextCycleAt)
+            {
+                await RunIncrementalCycleAsync(stoppingToken);
+                nextCycleAt = DateTime.UtcNow.AddSeconds(interval);
             }
 
             try
             {
-                await SyncInscripcionesAsync();
+                await Task.Delay(TimeSpan.FromSeconds(triggerPollSeconds), stoppingToken);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sincronizando inscripciones a Tango");
-            }
-
-            try
-            {
-                await SyncPagosAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sincronizando pagos a Tango");
-            }
-
-            try
-            {
-                await _tangoImputacionService.EjecutarPendientesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error ejecutando imputaciones pendientes en Tango");
-            }
-
-            try
-            {
-                await SyncPagosCuentaCorrienteAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sincronizando pagos de cuenta corriente a Tango");
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken);
+            catch (TaskCanceledException) { break; }
         }
     }
+
+    private async Task RunIncrementalCycleAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await ProcessChangeTrackingAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error procesando Change Tracking");
+        }
+
+        try
+        {
+            await SyncInscripcionesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sincronizando inscripciones a Tango");
+        }
+
+        try
+        {
+            await SyncPagosAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sincronizando pagos a Tango");
+        }
+
+        try
+        {
+            await _tangoImputacionService.EjecutarPendientesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ejecutando imputaciones pendientes en Tango");
+        }
+
+        try
+        {
+            await SyncPagosCuentaCorrienteAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sincronizando pagos de cuenta corriente a Tango");
+        }
+    }
+
+    private async Task<bool> IsFullSyncTriggeredAsync(CancellationToken ct)
+    {
+        var response = await _http.GetAsync("/api/sync/trigger", ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("GET /api/sync/trigger returned {Status}", response.StatusCode);
+            return false;
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<TriggerResponse>(cancellationToken: ct);
+        return payload?.Pending == true;
+    }
+
+    private record TriggerResponse(bool Pending, DateTime? RequestedAt);
 
     private async Task SyncPagosAsync()
     {

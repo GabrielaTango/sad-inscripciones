@@ -322,3 +322,120 @@ CREATE TABLE IF NOT EXISTS ResumenCuenta (
     UNIQUE KEY UQ_ResumenCuenta (Cuit, TComp, NComp, FechaVto),
     INDEX IX_ResumenCuenta_Cuit (Cuit)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 20. Vendedores (mirror de GVA23 con cuentas de tesorería del capítulo)
+CREATE TABLE IF NOT EXISTS Vendedores (
+    CodVended VARCHAR(20) NOT NULL PRIMARY KEY,
+    CtaCaja INT NOT NULL DEFAULT 0,
+    CtaTransferencia INT NOT NULL DEFAULT 0,
+    CtaCuotas INT NOT NULL DEFAULT 0,
+    CtaOtra INT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 21. PagosCuentaCorriente (recibos de resumen de cuenta — MP del socio o cobro presencial del capítulo)
+CREATE TABLE IF NOT EXISTS PagosCuentaCorriente (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    Cuit VARCHAR(20) NOT NULL,
+    Monto DECIMAL(18,2) NOT NULL,
+    Comprobantes TEXT NULL,                  -- JSON array; NULL/'[]' = pago a cuenta
+    ExternalReference VARCHAR(100) NOT NULL,
+    PreferenceId VARCHAR(100) NULL,
+    EstadoPago VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    MpPaymentId BIGINT NULL,
+    FechaPago DATETIME NULL,
+    SincronizadoTango TINYINT(1) NOT NULL DEFAULT 0,
+    MontoImputado DECIMAL(18,2) NULL,
+    CodVended VARCHAR(20) NULL,
+    MedioPago VARCHAR(20) NULL,
+    CtaTesoreria INT NULL,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX IX_PagoCC_Cuit (Cuit),
+    INDEX IX_PagoCC_ExtRef (ExternalReference),
+    INDEX IX_PagoCC_SincTango (EstadoPago, SincronizadoTango),
+    INDEX IX_PagoCC_CodVended (CodVended)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 22. ConfiguracionEmail (singleton: SMTP transaccional)
+CREATE TABLE IF NOT EXISTS ConfiguracionEmail (
+    Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Host VARCHAR(255) NOT NULL DEFAULT '',
+    Port INT NOT NULL DEFAULT 587,
+    EnableSsl TINYINT(1) NOT NULL DEFAULT 1,
+    Usuario VARCHAR(255) NOT NULL DEFAULT '',
+    PasswordCifrado TEXT NOT NULL,
+    FromEmail VARCHAR(255) NOT NULL DEFAULT '',
+    FromName VARCHAR(255) NOT NULL DEFAULT 'Inscripciones SAD',
+    ReplyTo VARCHAR(255) NULL,
+    BccCopia VARCHAR(500) NULL,
+    Asunto VARCHAR(500) NOT NULL DEFAULT 'Confirmación de inscripción - {{Evento}}',
+    Activo TINYINT(1) NOT NULL DEFAULT 0,
+    IgnorarCertificadoSsl TINYINT(1) NOT NULL DEFAULT 0,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UpdatedBy VARCHAR(100) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO ConfiguracionEmail (Id, Host, Port, EnableSsl, Usuario, PasswordCifrado, FromEmail, FromName, Asunto, Activo)
+SELECT 1, '', 587, 1, '', '', '', 'Inscripciones SAD', 'Confirmación de inscripción - {{Evento}}', 0
+WHERE NOT EXISTS (SELECT 1 FROM ConfiguracionEmail WHERE Id = 1);
+
+-- 23. EmailTemplates (templates HTML editables desde el admin)
+CREATE TABLE IF NOT EXISTS EmailTemplates (
+    Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Codigo VARCHAR(80) NOT NULL UNIQUE,
+    Nombre VARCHAR(200) NOT NULL,
+    Asunto VARCHAR(500) NOT NULL DEFAULT '',
+    BodyHtml MEDIUMTEXT NOT NULL,
+    BodyJson MEDIUMTEXT NULL,
+    Activo TINYINT(1) NOT NULL DEFAULT 1,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UpdatedBy VARCHAR(100) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO EmailTemplates (Codigo, Nombre, Asunto, BodyHtml, BodyJson, Activo)
+SELECT 'inscripcion-confirmada',
+       'Confirmación de inscripción',
+       'Confirmación de inscripción - {{Evento}}',
+       '',
+       NULL,
+       1
+WHERE NOT EXISTS (SELECT 1 FROM EmailTemplates WHERE Codigo = 'inscripcion-confirmada');
+
+-- 24. SyncTrigger (singleton: flag para forzar Full Sync desde el admin)
+CREATE TABLE IF NOT EXISTS SyncTrigger (
+    Id INT NOT NULL PRIMARY KEY,
+    RequestedAt DATETIME NULL,
+    RequestedBy VARCHAR(100) NULL,
+    ConsumedAt DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO SyncTrigger (Id, RequestedAt, RequestedBy, ConsumedAt) VALUES (1, NULL, NULL, NULL);
+
+-- ============================================================
+-- Columnas y constraints agregadas a tablas de la base original
+-- (correspondientes a Migration_PagosSincronizadoTango, _PagosUniqueRefExt,
+--  _UsuariosCapitulo, _ClientesCodVended, y la columna SincronizadoTango de
+--  Inscripciones consumida por SyncController).
+-- ============================================================
+
+ALTER TABLE Pagos ADD COLUMN SincronizadoTango TINYINT(1) NOT NULL DEFAULT 0;
+CREATE INDEX IX_Pagos_SincronizadoTango ON Pagos (EstadoPago, SincronizadoTango, DeletedAt);
+ALTER TABLE Pagos ADD CONSTRAINT UK_Pagos_Inscripcion_RefExt UNIQUE (InscripcionId, ReferenciaExterna);
+
+ALTER TABLE Inscripciones ADD COLUMN SincronizadoTango TINYINT(1) NOT NULL DEFAULT 0;
+CREATE INDEX IX_Inscripciones_SincronizadoTango ON Inscripciones (Estado, SincronizadoTango, DeletedAt);
+
+ALTER TABLE Clientes ADD COLUMN CodVended VARCHAR(20) NULL;
+CREATE INDEX IX_Clientes_CodVended ON Clientes (CodVended);
+
+ALTER TABLE Usuarios
+    ADD COLUMN CodVended VARCHAR(20) NULL,
+    ADD COLUMN EsCapitulo TINYINT(1) NOT NULL DEFAULT 0,
+    ADD CONSTRAINT FK_Usuarios_Vendedores
+        FOREIGN KEY (CodVended) REFERENCES Vendedores(CodVended)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+CREATE INDEX IX_Usuarios_CodVended ON Usuarios (CodVended);

@@ -1,12 +1,45 @@
 import { useState, useEffect, useCallback } from 'react'
 import { dashboardService } from '../../services/dashboardService'
 import type { DashboardStats } from '../../services/dashboardService'
-import { UserCheck, CalendarCheck, TrendingUp, CalendarDays, BarChart3, CreditCard, Award } from 'lucide-react'
+import { syncService } from '../../services/syncService'
+import type { SyncTriggerStatus } from '../../services/syncService'
+import { UserCheck, CalendarCheck, TrendingUp, CalendarDays, BarChart3, CreditCard, Award, RefreshCw } from 'lucide-react'
 
 const DashboardPage = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncTriggerStatus | null>(null)
+  const [syncMessage, setSyncMessage] = useState<{ kind: 'success' | 'danger'; text: string } | null>(null)
+
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      setSyncStatus(await syncService.getTriggerStatus())
+    } catch {
+      // silencioso — no debe romper el dashboard
+    }
+  }, [])
+
+  const handleTriggerSync = async () => {
+    if (syncing) return
+    if (!window.confirm('Esto va a forzar una sincronización completa con Tango. ¿Continuar?')) return
+    setSyncing(true)
+    setSyncMessage(null)
+    try {
+      await syncService.triggerFullSync()
+      setSyncMessage({ kind: 'success', text: 'Sincronización solicitada. El SyncService la ejecutará en los próximos segundos.' })
+      await loadSyncStatus()
+    } catch (err) {
+      setSyncMessage({ kind: 'danger', text: err instanceof Error ? err.message : 'Error solicitando sincronización' })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  useEffect(() => { loadSyncStatus() }, [loadSyncStatus])
+
+  const formatDate = (d: string | null) => d ? new Date(d).toLocaleString('es-AR') : '-'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,7 +92,40 @@ const DashboardPage = () => {
 
   return (
     <div>
-      <h2 className="font-bold text-slate-800 mb-4">Dashboard</h2>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <h2 className="font-bold text-slate-800">Dashboard</h2>
+        <div className="flex flex-col items-start md:items-end gap-1">
+          <button
+            type="button"
+            onClick={handleTriggerSync}
+            disabled={syncing}
+            className="btn-accent flex items-center gap-2 disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Solicitando...' : 'Sincronizar Tango'}
+          </button>
+          {syncStatus?.requestedAt && !syncStatus?.consumedAt && (
+            <span className="text-xs text-amber-700">
+              Pendiente desde {formatDate(syncStatus.requestedAt)}
+            </span>
+          )}
+          {syncStatus?.consumedAt && !syncStatus?.requestedAt && (
+            <span className="text-xs text-slate-500">
+              Última: {formatDate(syncStatus.consumedAt)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {syncMessage && (
+        <div
+          className={`mb-4 px-4 py-3 rounded border ${syncMessage.kind === 'success'
+            ? 'bg-green-50 border-green-300 text-green-800'
+            : 'bg-red-50 border-red-300 text-red-800'}`}
+        >
+          {syncMessage.text}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
