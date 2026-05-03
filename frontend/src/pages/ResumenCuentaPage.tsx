@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { resumenCuentaService } from '../services/resumenCuentaService'
-import type { PagoCuentaCorriente } from '../services/resumenCuentaService'
 import type { ResumenCuenta } from '../types/models'
 import {
   Receipt,
@@ -20,7 +19,6 @@ const ResumenCuentaPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [movimientos, setMovimientos] = useState<ResumenCuenta[]>([])
-  const [pagos, setPagos] = useState<PagoCuentaCorriente[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -29,12 +27,8 @@ const ResumenCuentaPage = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const [mov, pag] = await Promise.all([
-        resumenCuentaService.getByCuit(),
-        resumenCuentaService.getPagos(),
-      ])
+      const mov = await resumenCuentaService.getByCuit()
       setMovimientos(mov)
-      setPagos(pag)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar resumen')
     } finally {
