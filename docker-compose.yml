@@ -30,6 +30,7 @@ services:
       - MercadoPago__AccessToken=${MP_ACCESS_TOKEN:-CHANGE_ME}
       - MercadoPago__FrontendBaseUrl=https://waspy-clarissa-elatedly.ngrok-free.dev
       - SyncSettings__ApiKey=${SYNC_API_KEY:-sad-sync-secret-key-2026}
+      - Email__EncryptionKey=${EMAIL_ENCRYPTION_KEY}
     depends_on:
       mysql:
         condition: service_healthy
