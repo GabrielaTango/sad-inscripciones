@@ -6,12 +6,10 @@ x-logging: &default-logging
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.3
     container_name: sad_traefik
     restart: unless-stopped
     logging: *default-logging
-    environment:
-      - DOCKER_API_VERSION=1.41
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
