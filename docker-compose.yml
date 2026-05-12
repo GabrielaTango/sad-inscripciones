@@ -6,7 +6,7 @@ x-logging: &default-logging
 
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3
     container_name: sad_traefik
     restart: unless-stopped
     logging: *default-logging
