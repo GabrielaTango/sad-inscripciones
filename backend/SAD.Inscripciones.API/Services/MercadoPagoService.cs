@@ -4,27 +4,100 @@ using MercadoPago.Config;
 using MercadoPago.Resource.Payment;
 using MercadoPago.Resource.Preference;
 using SAD.Inscripciones.API.Models;
+using SAD.Inscripciones.API.Repositories.Interfaces;
 using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Services;
 
 public class MercadoPagoService : IMercadoPagoService
 {
-    private readonly string _frontendBaseUrl;
-    private readonly ILogger<MercadoPagoService> _logger;
+    private static readonly TimeSpan ConfigCacheTtl = TimeSpan.FromMinutes(5);
 
-    public MercadoPagoService(IConfiguration configuration, ILogger<MercadoPagoService> logger)
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ICryptoService _crypto;
+    private readonly ILogger<MercadoPagoService> _logger;
+    private readonly string _fallbackFrontendBaseUrl;
+
+    private string? _cachedAccessToken;
+    private string? _cachedFrontendBaseUrl;
+    private DateTime _cachedAt;
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
+    public MercadoPagoService(
+        IServiceScopeFactory scopeFactory,
+        ICryptoService crypto,
+        IConfiguration configuration,
+        ILogger<MercadoPagoService> logger)
     {
+        _scopeFactory = scopeFactory;
+        _crypto = crypto;
         _logger = logger;
-        var mpConfig = configuration.GetSection("MercadoPago");
-        var accessToken = mpConfig["AccessToken"]!;
-        MercadoPagoConfig.AccessToken = accessToken;
-        _frontendBaseUrl = mpConfig["FrontendBaseUrl"] ?? "http://localhost:5173";
-        _logger.LogInformation("MercadoPago inicializado con token: {TokenPrefix}...", accessToken[..Math.Min(15, accessToken.Length)]);
+        // Solo se usa si la DB no tiene FrontendBaseUrl seteado.
+        _fallbackFrontendBaseUrl = configuration["MercadoPago:FrontendBaseUrl"] ?? "http://localhost:5173";
+    }
+
+    public async Task<string> EnsureConfiguradoAsync()
+    {
+        if (_cachedAccessToken != null && DateTime.UtcNow - _cachedAt < ConfigCacheTtl)
+        {
+            MercadoPagoConfig.AccessToken = _cachedAccessToken;
+            return _cachedFrontendBaseUrl ?? _fallbackFrontendBaseUrl;
+        }
+
+        await _cacheLock.WaitAsync();
+        try
+        {
+            if (_cachedAccessToken != null && DateTime.UtcNow - _cachedAt < ConfigCacheTtl)
+            {
+                MercadoPagoConfig.AccessToken = _cachedAccessToken;
+                return _cachedFrontendBaseUrl ?? _fallbackFrontendBaseUrl;
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IConfiguracionMercadoPagoRepository>();
+            var config = await repo.GetAsync();
+
+            var token = string.IsNullOrEmpty(config.AccessTokenCifrado)
+                ? string.Empty
+                : _crypto.Decrypt(config.AccessTokenCifrado);
+
+            var frontendBaseUrl = string.IsNullOrWhiteSpace(config.FrontendBaseUrl)
+                ? _fallbackFrontendBaseUrl
+                : config.FrontendBaseUrl;
+
+            _cachedAccessToken = token;
+            _cachedFrontendBaseUrl = frontendBaseUrl;
+            _cachedAt = DateTime.UtcNow;
+
+            MercadoPagoConfig.AccessToken = token;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                _logger.LogWarning("MercadoPago: AccessToken no configurado en la DB. Cargá uno desde /admin/configuracion-mercadopago.");
+            }
+            else
+            {
+                _logger.LogInformation("MercadoPago configurado con token {TokenPrefix}...",
+                    token[..Math.Min(15, token.Length)]);
+            }
+
+            return frontendBaseUrl;
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
+    public void InvalidarCache()
+    {
+        _cachedAccessToken = null;
+        _cachedFrontendBaseUrl = null;
     }
 
     public async Task<MercadoPagoPreferenceResult> CrearPreferenciaAsync(Inscripcion inscripcion, string eventoTitulo, int cuotas = 1, decimal? montoOverride = null)
     {
+        var frontendBaseUrl = await EnsureConfiguradoAsync();
         var client = new PreferenceClient();
 
         var request = new PreferenceRequest
@@ -42,9 +115,9 @@ public class MercadoPagoService : IMercadoPagoService
             },
             BackUrls = new PreferenceBackUrlsRequest
             {
-                Success = $"{_frontendBaseUrl}/pago/resultado?status=approved",
-                Failure = $"{_frontendBaseUrl}/pago/resultado?status=rejected",
-                Pending = $"{_frontendBaseUrl}/pago/resultado?status=pending",
+                Success = $"{frontendBaseUrl}/pago/resultado?status=approved",
+                Failure = $"{frontendBaseUrl}/pago/resultado?status=rejected",
+                Pending = $"{frontendBaseUrl}/pago/resultado?status=pending",
             },
             PaymentMethods = new PreferencePaymentMethodsRequest
             {
@@ -74,6 +147,7 @@ public class MercadoPagoService : IMercadoPagoService
 
     public async Task<MercadoPagoPaymentInfo?> ObtenerInfoPagoAsync(long paymentId)
     {
+        await EnsureConfiguradoAsync();
         var client = new PaymentClient();
         Payment payment = await client.GetAsync(paymentId);
 
@@ -95,6 +169,7 @@ public class MercadoPagoService : IMercadoPagoService
     {
         try
         {
+            await EnsureConfiguradoAsync();
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", MercadoPagoConfig.AccessToken);
@@ -143,6 +218,7 @@ public class MercadoPagoService : IMercadoPagoService
         var result = new List<MercadoPagoPaymentInfo>();
         try
         {
+            await EnsureConfiguradoAsync();
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", MercadoPagoConfig.AccessToken);

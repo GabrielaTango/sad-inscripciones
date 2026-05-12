@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PayPal Payment</title>
+  </head>
+  <body>
+    <h1>PayPal Payment Example</h1>
+    <div id="paypal-button-container"></div>
+    <script src="https://www.paypal.com/sdk/js?client-id=Absy_eJmmpJ2lSeW468A9zvvTWiqiBwVroRj55MMqri1EQRfK-W_Eq1Dc6w06dagZHlv64iwlv5oK-Pk&currency=USD"></script>
+    <script>
+      paypal
+        .Buttons({
+          createOrder: function (data, actions) {
+            return actions.order.create({
+              purchase_units: [{ amount: { value: "10.00" } }],
+            });
+          },
+          onApprove: function (data, actions) {
+            return actions.order.capture().then(function (details) {
+              window.location.href =
+                "https://tusitio.com/gracias?orderId=" + data.orderID;
+            });
+          },
+          onCancel: function () {
+            window.location.href = "https://tusitio.com/cancelado";
+          },
+          onError: function (err) {
+            console.error(err);
+            window.location.href = "https://tusitio.com/error";
+          },
+        })
+        .render("#paypal-button-container");
+    </script>
+  </body>
+</html>

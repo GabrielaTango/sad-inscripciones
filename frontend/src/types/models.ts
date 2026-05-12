@@ -342,6 +342,19 @@ export interface ConfiguracionEmailForm {
   ignorarCertificadoSsl: boolean
 }
 
+export interface ConfiguracionMercadoPago {
+  frontendBaseUrl: string
+  tieneAccessToken: boolean
+  accessTokenPreview?: string | null
+  updatedAt?: string
+  updatedBy?: string | null
+}
+
+export interface ConfiguracionMercadoPagoForm {
+  accessToken?: string
+  frontendBaseUrl: string
+}
+
 export interface EmailTemplateListItem {
   codigo: string
   nombre: string

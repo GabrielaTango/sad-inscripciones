@@ -14,6 +14,15 @@ public interface IMercadoPagoService
     Task<MercadoPagoPaymentInfo?> ObtenerInfoPagoAsync(long paymentId);
     Task<MercadoPagoPaymentInfo?> BuscarPagoPorReferenciaAsync(string externalReference);
     Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarTodosPagosPorReferenciaAsync(string externalReference);
+
+    /// <summary>
+    /// Carga la config actual de MercadoPago desde la DB (con cache), aplica el AccessToken
+    /// al SDK global y devuelve el FrontendBaseUrl configurado.
+    /// </summary>
+    Task<string> EnsureConfiguradoAsync();
+
+    /// <summary>Invalida el cache de configuración (después de un PUT al panel admin).</summary>
+    void InvalidarCache();
 }
 
 public class MercadoPagoPaymentInfo

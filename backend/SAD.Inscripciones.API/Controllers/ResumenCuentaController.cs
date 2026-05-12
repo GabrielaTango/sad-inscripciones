@@ -16,14 +16,12 @@ namespace SAD.Inscripciones.API.Controllers;
 public class ResumenCuentaController : ControllerBase
 {
     private readonly DbConnectionFactory _dbFactory;
-    private readonly IConfiguration _configuration;
     private readonly IMercadoPagoService _mpService;
     private readonly ILogger<ResumenCuentaController> _logger;
 
-    public ResumenCuentaController(DbConnectionFactory dbFactory, IConfiguration configuration, IMercadoPagoService mpService, ILogger<ResumenCuentaController> logger)
+    public ResumenCuentaController(DbConnectionFactory dbFactory, IMercadoPagoService mpService, ILogger<ResumenCuentaController> logger)
     {
         _dbFactory = dbFactory;
-        _configuration = configuration;
         _mpService = mpService;
         _logger = logger;
     }
@@ -146,7 +144,7 @@ public class ResumenCuentaController : ControllerBase
             return BadRequest(new { error = "El total a pagar debe ser mayor a cero" });
 
         var externalReference = $"CC-{cuit}-{DateTime.UtcNow:yyyyMMddHHmmss}";
-        var frontendBaseUrl = _configuration["MercadoPago:FrontendBaseUrl"] ?? "http://localhost:5173";
+        var frontendBaseUrl = await _mpService.EnsureConfiguradoAsync();
 
         var comprobantesDesc = string.Join(", ", movimientos.Select(m => $"{m.TComp} {m.NComp}"));
         var comprobantesJson = JsonSerializer.Serialize(movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo }));

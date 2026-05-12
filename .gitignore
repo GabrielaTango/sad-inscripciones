@@ -21,6 +21,7 @@ Desktop.ini
 *.pfx
 *.p12
 secrets.json
+paypal/mercadopago.txt
 
 # .NET — binarios y artefactos de build
 **/bin/
