@@ -1,8 +1,15 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   traefik:
     image: traefik:v3.1
     container_name: sad_traefik
     restart: unless-stopped
+    logging: *default-logging
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -23,6 +30,7 @@ services:
 
   mysql:
     image: mysql:8.0
+    logging: *default-logging
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-Admin123!}
       - MYSQL_DATABASE=SADInscripciones
@@ -42,6 +50,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    logging: *default-logging
     expose:
       - "5161"
     environment:
@@ -60,6 +69,7 @@ services:
     build:
       context: ./frontend
       dockerfile: ../docker/nginx/Dockerfile
+    logging: *default-logging
     expose:
       - "80"
     volumes:
