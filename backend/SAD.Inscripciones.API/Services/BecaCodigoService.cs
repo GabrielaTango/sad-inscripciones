@@ -1,8 +1,8 @@
+using ClosedXML.Excel;
 using SAD.Inscripciones.API.Exceptions;
 using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
 using SAD.Inscripciones.API.Services.Interfaces;
-using SpreadsheetLight;
 
 namespace SAD.Inscripciones.API.Services;
 
@@ -30,36 +30,32 @@ public class BecaCodigoService : IBecaCodigoService
     {
         var datos = (await _repository.GetCodigosExportAsync(becaEventoId)).ToList();
 
-        using var sl = new SLDocument();
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Becas");
 
-        // Headers
-        sl.SetCellValue("A1", "Campaña");
-        sl.SetCellValue("B1", "Evento");
-        sl.SetCellValue("C1", "Código");
-        sl.SetCellValue("D1", "Fecha Vencimiento");
+        ws.Cell(1, 1).Value = "Campaña";
+        ws.Cell(1, 2).Value = "Evento";
+        ws.Cell(1, 3).Value = "Código";
+        ws.Cell(1, 4).Value = "Fecha Vencimiento";
 
-        // Header style
-        var headerStyle = sl.CreateStyle();
-        headerStyle.Font.Bold = true;
-        sl.SetCellStyle("A1", "D1", headerStyle);
+        var headerRange = ws.Range(1, 1, 1, 4);
+        headerRange.Style.Font.Bold = true;
 
         for (int i = 0; i < datos.Count; i++)
         {
             int row = i + 2;
             var d = (IDictionary<string, object>)datos[i];
 
-            sl.SetCellValue($"A{row}", d["NombreCampana"]?.ToString() ?? "");
-            sl.SetCellValue($"B{row}", d["NombreEvento"]?.ToString() ?? "");
-            sl.SetCellValue($"C{row}", d["Codigo"]?.ToString() ?? "");
-            sl.SetCellValue($"D{row}", d["FechaVencimiento"] != null ? Convert.ToDateTime(d["FechaVencimiento"]).ToString("dd/MM/yyyy") : "Sin vencimiento");
+            ws.Cell(row, 1).Value = d["NombreCampana"]?.ToString() ?? "";
+            ws.Cell(row, 2).Value = d["NombreEvento"]?.ToString() ?? "";
+            ws.Cell(row, 3).Value = d["Codigo"]?.ToString() ?? "";
+            ws.Cell(row, 4).Value = d["FechaVencimiento"] != null ? Convert.ToDateTime(d["FechaVencimiento"]).ToString("dd/MM/yyyy") : "Sin vencimiento";
         }
 
-        // Auto-fit columns
-        for (int col = 1; col <= 4; col++)
-            sl.AutoFitColumn(col);
+        ws.Columns().AdjustToContents();
 
         using var ms = new MemoryStream();
-        sl.SaveAs(ms);
+        workbook.SaveAs(ms);
         return ms.ToArray();
     }
 }

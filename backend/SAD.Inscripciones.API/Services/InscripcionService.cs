@@ -1,10 +1,10 @@
+using ClosedXML.Excel;
 using SAD.Inscripciones.API.Data;
 using SAD.Inscripciones.API.DTOs;
 using SAD.Inscripciones.API.Exceptions;
 using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
 using SAD.Inscripciones.API.Services.Interfaces;
-using SpreadsheetLight;
 
 namespace SAD.Inscripciones.API.Services;
 
@@ -317,19 +317,16 @@ public class InscripcionService : IInscripcionService
             "PrecioBase", "Descuento", "PrecioFinal", "MontoPagado", "MedioPago", "FechaPago", "ReferenciaPago"
         };
 
-        using var sl = new SLDocument();
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Inscripciones");
 
         for (int c = 0; c < headers.Length; c++)
-            sl.SetCellValue(1, c + 1, headers[c]);
+            ws.Cell(1, c + 1).Value = headers[c];
 
-        var headerStyle = sl.CreateStyle();
-        headerStyle.Font.Bold = true;
-        headerStyle.Font.FontColor = System.Drawing.Color.White;
-        headerStyle.Fill.SetPattern(
-            DocumentFormat.OpenXml.Spreadsheet.PatternValues.Solid,
-            System.Drawing.Color.FromArgb(0x5D, 0x8A, 0xC8),
-            System.Drawing.Color.FromArgb(0x5D, 0x8A, 0xC8));
-        sl.SetCellStyle(1, 1, 1, headers.Length, headerStyle);
+        var headerRange = ws.Range(1, 1, 1, headers.Length);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Font.FontColor = XLColor.White;
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(0x5D, 0x8A, 0xC8);
 
         for (int i = 0; i < inscripciones.Count; i++)
         {
@@ -338,37 +335,37 @@ public class InscripcionService : IInscripcionService
             int col = 1;
 
             // Identificadores principales
-            sl.SetCellValue(row, col++, ins.Id);
-            sl.SetCellValue(row, col++, eventos.TryGetValue(ins.EventoId, out var titulo) ? titulo : "");
-            sl.SetCellValue(row, col++, tiposAlumno.TryGetValue(ins.TipoAlumnoId, out var tipoNom) ? tipoNom : ins.TipoAlumnoId.ToString());
-            sl.SetCellValue(row, col++, ins.Estado);
+            ws.Cell(row, col++).Value = ins.Id;
+            ws.Cell(row, col++).Value = eventos.TryGetValue(ins.EventoId, out var titulo) ? titulo : "";
+            ws.Cell(row, col++).Value = tiposAlumno.TryGetValue(ins.TipoAlumnoId, out var tipoNom) ? tipoNom : ins.TipoAlumnoId.ToString();
+            ws.Cell(row, col++).Value = ins.Estado;
 
             // Datos del alumno
-            sl.SetCellValue(row, col++, ins.Documento ?? "");
-            sl.SetCellValue(row, col++, ins.Apellido);
-            sl.SetCellValue(row, col++, ins.Nombre);
-            sl.SetCellValue(row, col++, ins.Email);
-            sl.SetCellValue(row, col++, ins.Telefono ?? "");
-            sl.SetCellValue(row, col++, ins.Celular ?? "");
-            sl.SetCellValue(row, col++, ins.FechaNacimiento?.ToString("dd/MM/yyyy") ?? "");
-            sl.SetCellValue(row, col++, ins.Domicilio ?? "");
-            sl.SetCellValue(row, col++, ins.CodigoPostal ?? "");
-            sl.SetCellValue(row, col++, ins.Localidad ?? "");
-            sl.SetCellValue(row, col++, ins.Provincia ?? "");
-            sl.SetCellValue(row, col++, ins.Pais ?? "");
-            sl.SetCellValue(row, col++, ins.Profesion ?? "");
-            sl.SetCellValue(row, col++, ins.Especialidad ?? "");
-            sl.SetCellValue(row, col++, ins.Institucion ?? "");
-            sl.SetCellValue(row, col++, ins.Sector ?? "");
+            ws.Cell(row, col++).Value = ins.Documento ?? "";
+            ws.Cell(row, col++).Value = ins.Apellido;
+            ws.Cell(row, col++).Value = ins.Nombre;
+            ws.Cell(row, col++).Value = ins.Email;
+            ws.Cell(row, col++).Value = ins.Telefono ?? "";
+            ws.Cell(row, col++).Value = ins.Celular ?? "";
+            ws.Cell(row, col++).Value = ins.FechaNacimiento?.ToString("dd/MM/yyyy") ?? "";
+            ws.Cell(row, col++).Value = ins.Domicilio ?? "";
+            ws.Cell(row, col++).Value = ins.CodigoPostal ?? "";
+            ws.Cell(row, col++).Value = ins.Localidad ?? "";
+            ws.Cell(row, col++).Value = ins.Provincia ?? "";
+            ws.Cell(row, col++).Value = ins.Pais ?? "";
+            ws.Cell(row, col++).Value = ins.Profesion ?? "";
+            ws.Cell(row, col++).Value = ins.Especialidad ?? "";
+            ws.Cell(row, col++).Value = ins.Institucion ?? "";
+            ws.Cell(row, col++).Value = ins.Sector ?? "";
 
             // Resto de la inscripción
-            sl.SetCellValue(row, col++, ins.FechaInscripcion.ToString("dd/MM/yyyy HH:mm"));
-            sl.SetCellValue(row, col++, ins.Observaciones ?? "");
+            ws.Cell(row, col++).Value = ins.FechaInscripcion.ToString("dd/MM/yyyy HH:mm");
+            ws.Cell(row, col++).Value = ins.Observaciones ?? "";
 
             // Datos del pago
-            sl.SetCellValue(row, col++, (double)ins.PrecioBase);
-            sl.SetCellValue(row, col++, (double)ins.DescuentoAplicado);
-            sl.SetCellValue(row, col++, (double)ins.PrecioFinal);
+            ws.Cell(row, col++).Value = ins.PrecioBase;
+            ws.Cell(row, col++).Value = ins.DescuentoAplicado;
+            ws.Cell(row, col++).Value = ins.PrecioFinal;
 
             if (pagosPorInscripcion.TryGetValue(ins.Id, out var pagos))
             {
@@ -376,10 +373,10 @@ public class InscripcionService : IInscripcionService
                 if (confirmados.Count > 0)
                 {
                     var ultimoConfirmado = confirmados.OrderByDescending(p => p.FechaPago ?? p.CreatedAt).First();
-                    sl.SetCellValue(row, col++, (double)confirmados.Sum(p => p.Monto));
-                    sl.SetCellValue(row, col++, ultimoConfirmado.MedioPago);
-                    sl.SetCellValue(row, col++, (ultimoConfirmado.FechaPago ?? ultimoConfirmado.CreatedAt).ToString("dd/MM/yyyy HH:mm"));
-                    sl.SetCellValue(row, col++, ultimoConfirmado.ReferenciaExterna ?? "");
+                    ws.Cell(row, col++).Value = confirmados.Sum(p => p.Monto);
+                    ws.Cell(row, col++).Value = ultimoConfirmado.MedioPago;
+                    ws.Cell(row, col++).Value = (ultimoConfirmado.FechaPago ?? ultimoConfirmado.CreatedAt).ToString("dd/MM/yyyy HH:mm");
+                    ws.Cell(row, col++).Value = ultimoConfirmado.ReferenciaExterna ?? "";
                 }
                 else
                 {
@@ -392,11 +389,10 @@ public class InscripcionService : IInscripcionService
             }
         }
 
-        for (int c = 1; c <= headers.Length; c++)
-            sl.AutoFitColumn(c);
+        ws.Columns().AdjustToContents();
 
         using var ms = new MemoryStream();
-        sl.SaveAs(ms);
+        workbook.SaveAs(ms);
         return ms.ToArray();
     }
 }
