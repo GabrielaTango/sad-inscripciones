@@ -80,7 +80,7 @@ const LoginPage = () => {
                       id="usuario"
                       value={usuario}
                       onChange={(e) => setUsuario(e.target.value)}
-                      placeholder="CUIT o usuario"
+                      placeholder="Su DNI"
                       required
                     />
                   </div>
@@ -95,7 +95,7 @@ const LoginPage = () => {
                       id="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Ingrese su contraseña"
+                      placeholder="Su DNI"
                       required
                     />
                   </div>

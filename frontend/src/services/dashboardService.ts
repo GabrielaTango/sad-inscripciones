@@ -10,6 +10,7 @@ export interface InscripcionesPorEvento {
   titulo: string
   total: number
   confirmadas: number
+  reservadas: number
   pendientes: number
   canceladas: number
 }

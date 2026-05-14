@@ -124,15 +124,15 @@ public abstract class TangoEntity
         {
             "int" or "smallint" or "tinyint" =>
                 int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
-                    ? i.ToString(CultureInfo.InvariantCulture)
+                    ? (i == -1 ? "null" : i.ToString(CultureInfo.InvariantCulture))
                     : "null",
             "bigint" =>
                 long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)
-                    ? l.ToString(CultureInfo.InvariantCulture)
+                    ? (l == -1L ? "null" : l.ToString(CultureInfo.InvariantCulture))
                     : "null",
 
             "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" =>
-                ParseDecimal(value, out var d) ? SqlH.ToDecimal(d) : "null",
+                ParseDecimal(value, out var d) ? (d == -1m ? "null" : SqlH.ToDecimal(d)) : "null",
 
             "date" or "datetime" or "datetime2" or "smalldatetime" or "datetimeoffset" =>
                 ParseDate(value, out var dt) ? SqlH.ToDateTime(dt) : "null",

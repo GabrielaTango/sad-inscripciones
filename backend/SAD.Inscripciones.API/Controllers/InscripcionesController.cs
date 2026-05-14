@@ -47,6 +47,16 @@ public class InscripcionesController : ControllerBase
         return Ok(await _service.GetByIdAsync(id));
     }
 
+    [HttpGet("export")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> Export([FromQuery] int? eventoId)
+    {
+        var bytes = await _service.ExportToExcelAsync(eventoId);
+        var sufijo = eventoId.HasValue ? $"_evento_{eventoId.Value}" : "";
+        var nombre = $"inscripciones{sufijo}_{DateTime.Now:yyyy-MM-dd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
+    }
+
     [HttpGet("pendientes")]
     public async Task<IActionResult> GetPendientes([FromQuery] string documento, [FromQuery] int? eventoId)
     {

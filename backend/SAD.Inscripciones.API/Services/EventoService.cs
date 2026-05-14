@@ -36,9 +36,6 @@ public class EventoService : IEventoService
         if (entity.FechaFin < entity.FechaInicio)
             throw new BusinessException("La fecha de fin no puede ser anterior a la fecha de inicio.");
 
-        if (entity.FechaCierreInscripcion > entity.FechaInicio)
-            throw new BusinessException("La fecha de cierre de inscripción no puede ser posterior a la fecha de inicio.");
-
         return await _repository.CreateAsync(entity);
     }
 
@@ -52,9 +49,6 @@ public class EventoService : IEventoService
 
         if (entity.FechaFin < entity.FechaInicio)
             throw new BusinessException("La fecha de fin no puede ser anterior a la fecha de inicio.");
-
-        if (entity.FechaCierreInscripcion > entity.FechaInicio)
-            throw new BusinessException("La fecha de cierre de inscripción no puede ser posterior a la fecha de inicio.");
 
         await _repository.UpdateAsync(entity);
     }

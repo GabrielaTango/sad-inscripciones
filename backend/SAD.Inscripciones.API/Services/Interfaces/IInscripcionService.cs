@@ -13,4 +13,5 @@ public interface IInscripcionService
     Task DeleteAsync(int id, string deletedBy);
     Task<IEnumerable<DTOs.InscripcionPendienteDto>> GetPendientesByDocumentoAsync(string documento, int? eventoId);
     Task<int> CountPendientesByDocumentoAsync(string documento);
+    Task<byte[]> ExportToExcelAsync(int? eventoId);
 }

@@ -388,7 +388,7 @@ const InscripcionPage = () => {
                               {selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
                                 <label className="inline-flex items-center gap-2 cursor-pointer">
                                   <input className="form-check-input" type="radio" name="modalidadPago" value="cuotas" checked={modalidadPago === 'cuotas'} onChange={() => setModalidadPago('cuotas')} />
-                                  <span className="text-sm">Cuotas Sin Interes</span>
+                                  <span className="text-sm">En cuotas</span>
                                 </label>
                               )}
                               <label className="inline-flex items-center gap-2 cursor-pointer">
@@ -405,7 +405,7 @@ const InscripcionPage = () => {
 
                             {modalidadPago === 'cuotas' && selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
                               <button type="button" className="btn-outline-primary btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(selectedPrecio.cantidadCuotas || 6)}>
-                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />{selectedPrecio.cantidadCuotas || 6} cuotas sin interes de ${(selectedPrecio.precioCuotas / (selectedPrecio.cantidadCuotas || 6)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
+                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />{selectedPrecio.cantidadCuotas || 6} cuotas de ${(selectedPrecio.precioCuotas / (selectedPrecio.cantidadCuotas || 6)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
                               </button>
                             )}
 

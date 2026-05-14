@@ -218,6 +218,7 @@ const DashboardPage = () => {
                   <th className="px-4 py-3 text-left">Evento</th>
                   <th className="px-4 py-3 text-center">Total</th>
                   <th className="px-4 py-3 text-center">Confirmadas</th>
+                  <th className="px-4 py-3 text-center">Reservadas</th>
                   <th className="px-4 py-3 text-center">Pendientes</th>
                   <th className="px-4 py-3 text-center">Canceladas</th>
                 </tr>
@@ -228,12 +229,13 @@ const DashboardPage = () => {
                     <td className="px-4 py-3">{e.titulo}</td>
                     <td className="px-4 py-3 text-center font-bold">{e.total}</td>
                     <td className="px-4 py-3 text-center"><span className="badge bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">{e.confirmadas}</span></td>
+                    <td className="px-4 py-3 text-center"><span className="badge bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">{e.reservadas}</span></td>
                     <td className="px-4 py-3 text-center"><span className="badge bg-amber-100 text-amber-700 px-2 py-1 rounded-full text-xs">{e.pendientes}</span></td>
                     <td className="px-4 py-3 text-center"><span className="badge bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">{e.canceladas}</span></td>
                   </tr>
                 ))}
                 {stats.inscripcionesPorEvento.length === 0 && (
-                  <tr><td colSpan={5} className="text-center text-slate-500 py-3">Sin datos</td></tr>
+                  <tr><td colSpan={6} className="text-center text-slate-500 py-3">Sin datos</td></tr>
                 )}
               </tbody>
             </table>

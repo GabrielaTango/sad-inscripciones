@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Bookmark, X, RefreshCw, Receipt } from 'lucide-react'
+import { Check, Bookmark, X, RefreshCw, Receipt, Download } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
 import ConfirmDialog from '../../components/Admin/ConfirmDialog'
 import { inscripcionesService } from '../../services/inscripcionesService'
@@ -58,6 +58,21 @@ const InscripcionesAdminPage = () => {
     finally { setLoading(false) }
   }
 
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    if (data.length === 0 || exporting) return
+    setExporting(true)
+    setError('')
+    try {
+      await inscripcionesService.exportExcel(eventoFilter ? Number(eventoFilter) : undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al exportar')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const estadoBadge = (estado: string) => {
     const map: Record<string, string> = { Pendiente: 'bg-amber-100 text-amber-700', Reservada: 'bg-blue-100 text-blue-700', Confirmada: 'bg-green-100 text-green-700', Cancelada: 'bg-red-100 text-red-700', Rechazada: 'bg-gray-100 text-gray-700' }
     return map[estado] || 'bg-blue-100 text-blue-700'
@@ -86,11 +101,21 @@ const InscripcionesAdminPage = () => {
         </div>
       )}
 
-      <div className="mb-3">
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
         <select className="form-select w-auto" value={eventoFilter} onChange={e => setEventoFilter(e.target.value ? Number(e.target.value) : '')}>
           <option value="">Todos los eventos</option>
           {eventos.map(e => <option key={e.id} value={e.id}>{e.titulo}</option>)}
         </select>
+        <button
+          type="button"
+          className="btn-accent flex items-center gap-2 disabled:opacity-60"
+          onClick={handleExport}
+          disabled={data.length === 0 || exporting}
+          title="Descargar inscripciones filtradas a Excel"
+        >
+          <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
+          {exporting ? 'Exportando...' : `Exportar a Excel (${data.length})`}
+        </button>
       </div>
 
       <DataTable

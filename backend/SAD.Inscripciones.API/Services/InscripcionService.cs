@@ -4,6 +4,7 @@ using SAD.Inscripciones.API.Exceptions;
 using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
 using SAD.Inscripciones.API.Services.Interfaces;
+using SpreadsheetLight;
 
 namespace SAD.Inscripciones.API.Services;
 
@@ -19,6 +20,7 @@ public class InscripcionService : IInscripcionService
     private readonly IPromocionCuponRepository _promocionCuponRepository;
     private readonly IPromocionCuponService _promocionCuponService;
     private readonly IEmailService _emailService;
+    private readonly IPagoRepository _pagoRepository;
     private readonly DbConnectionFactory _dbFactory;
 
     public InscripcionService(
@@ -32,6 +34,7 @@ public class InscripcionService : IInscripcionService
         IPromocionCuponRepository promocionCuponRepository,
         IPromocionCuponService promocionCuponService,
         IEmailService emailService,
+        IPagoRepository pagoRepository,
         DbConnectionFactory dbFactory)
     {
         _repository = repository;
@@ -44,6 +47,7 @@ public class InscripcionService : IInscripcionService
         _promocionCuponRepository = promocionCuponRepository;
         _promocionCuponService = promocionCuponService;
         _emailService = emailService;
+        _pagoRepository = pagoRepository;
         _dbFactory = dbFactory;
     }
 
@@ -284,5 +288,115 @@ public class InscripcionService : IInscripcionService
     public async Task<int> CountPendientesByDocumentoAsync(string documento)
     {
         return await _repository.CountPendientesByDocumentoAsync(documento);
+    }
+
+    public async Task<byte[]> ExportToExcelAsync(int? eventoId)
+    {
+        var inscripciones = (eventoId.HasValue
+            ? await _repository.GetByEventoIdAsync(eventoId.Value)
+            : await _repository.GetAllAsync()).ToList();
+
+        var eventos = (await _eventoRepository.GetAllAsync()).ToDictionary(e => e.Id, e => e.Titulo);
+        var tiposAlumno = (await _tipoAlumnoRepository.GetAllAsync()).ToDictionary(t => t.Id, t => t.Nombre);
+
+        var pagosPorInscripcion = (await _pagoRepository.GetAllAsync())
+            .GroupBy(p => p.InscripcionId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var headers = new[]
+        {
+            // Identificadores principales
+            "InscripcionID", "Evento", "TipoAlumno", "Estado",
+            // Datos del alumno
+            "Documento", "Apellido", "Nombre", "Email", "Telefono", "Celular", "FechaNacimiento",
+            "Domicilio", "CodigoPostal", "Localidad", "Provincia", "Pais",
+            "Profesion", "Especialidad", "Institucion", "Sector",
+            // Resto de la inscripción
+            "FechaInscripcion", "Observaciones",
+            // Datos del pago
+            "PrecioBase", "Descuento", "PrecioFinal", "MontoPagado", "MedioPago", "FechaPago", "ReferenciaPago"
+        };
+
+        using var sl = new SLDocument();
+
+        for (int c = 0; c < headers.Length; c++)
+            sl.SetCellValue(1, c + 1, headers[c]);
+
+        var headerStyle = sl.CreateStyle();
+        headerStyle.Font.Bold = true;
+        headerStyle.Font.FontColor = System.Drawing.Color.White;
+        headerStyle.Fill.SetPattern(
+            DocumentFormat.OpenXml.Spreadsheet.PatternValues.Solid,
+            System.Drawing.Color.FromArgb(0x5D, 0x8A, 0xC8),
+            System.Drawing.Color.FromArgb(0x5D, 0x8A, 0xC8));
+        sl.SetCellStyle(1, 1, 1, headers.Length, headerStyle);
+
+        for (int i = 0; i < inscripciones.Count; i++)
+        {
+            var ins = inscripciones[i];
+            int row = i + 2;
+            int col = 1;
+
+            // Identificadores principales
+            sl.SetCellValue(row, col++, ins.Id);
+            sl.SetCellValue(row, col++, eventos.TryGetValue(ins.EventoId, out var titulo) ? titulo : "");
+            sl.SetCellValue(row, col++, tiposAlumno.TryGetValue(ins.TipoAlumnoId, out var tipoNom) ? tipoNom : ins.TipoAlumnoId.ToString());
+            sl.SetCellValue(row, col++, ins.Estado);
+
+            // Datos del alumno
+            sl.SetCellValue(row, col++, ins.Documento ?? "");
+            sl.SetCellValue(row, col++, ins.Apellido);
+            sl.SetCellValue(row, col++, ins.Nombre);
+            sl.SetCellValue(row, col++, ins.Email);
+            sl.SetCellValue(row, col++, ins.Telefono ?? "");
+            sl.SetCellValue(row, col++, ins.Celular ?? "");
+            sl.SetCellValue(row, col++, ins.FechaNacimiento?.ToString("dd/MM/yyyy") ?? "");
+            sl.SetCellValue(row, col++, ins.Domicilio ?? "");
+            sl.SetCellValue(row, col++, ins.CodigoPostal ?? "");
+            sl.SetCellValue(row, col++, ins.Localidad ?? "");
+            sl.SetCellValue(row, col++, ins.Provincia ?? "");
+            sl.SetCellValue(row, col++, ins.Pais ?? "");
+            sl.SetCellValue(row, col++, ins.Profesion ?? "");
+            sl.SetCellValue(row, col++, ins.Especialidad ?? "");
+            sl.SetCellValue(row, col++, ins.Institucion ?? "");
+            sl.SetCellValue(row, col++, ins.Sector ?? "");
+
+            // Resto de la inscripción
+            sl.SetCellValue(row, col++, ins.FechaInscripcion.ToString("dd/MM/yyyy HH:mm"));
+            sl.SetCellValue(row, col++, ins.Observaciones ?? "");
+
+            // Datos del pago
+            sl.SetCellValue(row, col++, (double)ins.PrecioBase);
+            sl.SetCellValue(row, col++, (double)ins.DescuentoAplicado);
+            sl.SetCellValue(row, col++, (double)ins.PrecioFinal);
+
+            if (pagosPorInscripcion.TryGetValue(ins.Id, out var pagos))
+            {
+                var confirmados = pagos.Where(p => p.EstadoPago == "Confirmado").ToList();
+                if (confirmados.Count > 0)
+                {
+                    var ultimoConfirmado = confirmados.OrderByDescending(p => p.FechaPago ?? p.CreatedAt).First();
+                    sl.SetCellValue(row, col++, (double)confirmados.Sum(p => p.Monto));
+                    sl.SetCellValue(row, col++, ultimoConfirmado.MedioPago);
+                    sl.SetCellValue(row, col++, (ultimoConfirmado.FechaPago ?? ultimoConfirmado.CreatedAt).ToString("dd/MM/yyyy HH:mm"));
+                    sl.SetCellValue(row, col++, ultimoConfirmado.ReferenciaExterna ?? "");
+                }
+                else
+                {
+                    col += 4;
+                }
+            }
+            else
+            {
+                col += 4;
+            }
+        }
+
+        for (int c = 1; c <= headers.Length; c++)
+            sl.AutoFitColumn(c);
+
+        using var ms = new MemoryStream();
+        sl.SaveAs(ms);
+        return ms.ToArray();
     }
 }

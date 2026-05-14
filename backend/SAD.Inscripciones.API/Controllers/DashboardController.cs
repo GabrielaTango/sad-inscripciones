@@ -42,6 +42,7 @@ public class DashboardController : ControllerBase
             @"SELECT e.Id AS EventoId, e.Titulo,
                      COUNT(i.Id) AS Total,
                      SUM(CASE WHEN i.Estado = 'Confirmada' THEN 1 ELSE 0 END) AS Confirmadas,
+                     SUM(CASE WHEN i.Estado = 'Reservada' THEN 1 ELSE 0 END) AS Reservadas,
                      SUM(CASE WHEN i.Estado = 'Pendiente' THEN 1 ELSE 0 END) AS Pendientes,
                      SUM(CASE WHEN i.Estado = 'Cancelada' THEN 1 ELSE 0 END) AS Canceladas
               FROM Eventos e
@@ -75,6 +76,6 @@ public class DashboardController : ControllerBase
     }
 
     private record InscripcionesPorEstadoDto(string Estado, long Cantidad);
-    private record InscripcionesPorEventoDto(int EventoId, string Titulo, long Total, decimal Confirmadas, decimal Pendientes, decimal Canceladas);
+    private record InscripcionesPorEventoDto(int EventoId, string Titulo, long Total, decimal Confirmadas, decimal Reservadas, decimal Pendientes, decimal Canceladas);
     private record PagosPorEstadoDto(string EstadoPago, long Cantidad, decimal Monto);
 }

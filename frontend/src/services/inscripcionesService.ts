@@ -63,6 +63,27 @@ export const inscripcionesService = {
   countPendientes: () => api.get<{ count: number }>(`${BASE}/pendientes/count`),
   validarPendientes: () => api.post<ValidarInscripcionesResult>(`${BASE}/validar-pendientes`, {}),
   verificarMP: (id: number) => api.post<ValidacionInscripcion>(`${BASE}/${id}/verificar-mp`, {}),
+  exportExcel: async (eventoId?: number) => {
+    const token = localStorage.getItem('sad_token')
+    const qs = eventoId ? `?eventoId=${eventoId}` : ''
+    const response = await fetch(`/api${BASE}/export${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) throw new Error('Error al exportar')
+    const blob = await response.blob()
+    const cd = response.headers.get('content-disposition') || ''
+    const match = cd.match(/filename="?([^";]+)"?/i)
+    const fechaArchivo = new Date().toISOString().slice(0, 10)
+    const filename = match?.[1] ?? `inscripciones_${fechaArchivo}.xlsx`
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
 }
 
 export interface ValidacionInscripcion {
