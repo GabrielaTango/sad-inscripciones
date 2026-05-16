@@ -144,7 +144,7 @@ public class TangoResumenCuentaService
             await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
 
             // SBA05 Debe
-            var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient, cuentaHaberFinal);
+            var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient);
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
             //sba05d.Set("FILLER", extRef);

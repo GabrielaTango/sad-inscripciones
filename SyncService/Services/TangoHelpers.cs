@@ -39,13 +39,21 @@ internal static class TangoHelpers
             new { Tipo = tipo }, tx) ?? -1;
     }
 
-    public static async Task<decimal> TraerCuentaDebeAsync(SqlConnection conn, SqlTransaction tx, string codClient, decimal fallback)
+    public static async Task<string?> TraerCodVendedClienteAsync(SqlConnection conn, SqlTransaction tx, string codClient)
+    {
+        var cod = await conn.QueryFirstOrDefaultAsync<string?>(
+            "SELECT COD_VENDED FROM GVA14 WHERE COD_CLIENT = @CodClient",
+            new { CodClient = codClient }, tx);
+        return string.IsNullOrWhiteSpace(cod) ? null : cod.Trim();
+    }
+
+    public static async Task<decimal> TraerCuentaDebeAsync(SqlConnection conn, SqlTransaction tx, string codClient)
     {
         var cta = await conn.QueryFirstOrDefaultAsync<decimal?>(
-            @"SELECT CAST(t2.CAMPOS_ADICIONALES.value('(/CAMPOS_ADICIONALES/CA_1118_CTA_CUOTAS)[1]', 'varchar(10)') AS DECIMAL)
+            @"SELECT CAST(t2.CAMPOS_ADICIONALES.value('(/CAMPOS_ADICIONALES/CA_1118_CTA_MERCADO_PAGO)[1]', 'varchar(10)') AS DECIMAL)
               FROM GVA14 t1 INNER JOIN GVA23 t2 ON t1.COD_VENDED = t2.COD_VENDED
               WHERE t1.COD_CLIENT = @CodClient AND t1.COD_VENDED <> '90'",
             new { CodClient = codClient }, tx);
-        return cta ?? fallback;
+        return cta ?? 0;
     }
 }

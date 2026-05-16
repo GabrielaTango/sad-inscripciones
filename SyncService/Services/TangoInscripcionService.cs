@@ -16,9 +16,8 @@ public class TangoInscripcionService
     private readonly IConfiguration _config;
     private readonly TangoClienteService _clienteService;
 
-    private int TalonarioPedido => _config.GetValue("InscripcionSync:TalonarioPedido", 5);
+    private int TalonarioPedido => _config.GetValue("InscripcionSync:TalonarioPedido", 99);
     private int TalonarioFactura => _config.GetValue("InscripcionSync:TalonarioFactura", 8);
-    private string CodigoVendedor => _config["InscripcionSync:CodigoVendedor"] ?? "90";
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
 
     public TangoInscripcionService(
@@ -48,11 +47,12 @@ public class TangoInscripcionService
             var nroPedido = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioPedido);
             var idAsientoModelo = await TangoHelpers.TraerIdAsientoModeloAsync(conn, tx, TipoAsientoModelo);
             var codArticu = insc.CodArticu ?? "";
+            var codVended = await TangoHelpers.TraerCodVendedClienteAsync(conn, tx, codClient) ?? "09";
 
             var gva21 = new TangoGVA21();
             gva21.Set("FILLER", codClient);
             gva21.Set("COD_CLIENT", codClient);
-            gva21.Set("COD_VENDED", CodigoVendedor);
+            gva21.Set("COD_VENDED", codVended);
             gva21.Set("NRO_PEDIDO", nroPedido);
             gva21.SetInt("TALON_PED", TalonarioPedido);
             gva21.SetInt("TALONARIO", TalonarioFactura);
@@ -65,7 +65,6 @@ public class TangoInscripcionService
             gva21.SetDecimal("TOTAL_PEDI_CON_IMPUESTOS", insc.PrecioFinal);
             gva21.SetInt("ID_ASIENTO_MODELO_GV", idAsientoModelo);
             gva21.SetDate("FECHA_ULTIMA_MODIFICACION", now);
-            gva21.SetInt("ESTADO", 1);
             await conn.ExecuteAsync(gva21.Insert(), transaction: tx);
 
             // 3. Crear renglón (GVA03) con cálculo de precios

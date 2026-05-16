@@ -117,8 +117,8 @@ public abstract class TangoEntity
     protected static string FormatBySqlType(string sqlType, string value)
     {
         // null/vacío → NULL para todos los tipos.
-        if (string.IsNullOrEmpty(value) || value.Equals("null", StringComparison.OrdinalIgnoreCase))
-            return "null";
+        //if (string.IsNullOrEmpty(value) || value.Equals("null", StringComparison.OrdinalIgnoreCase))
+        //    return "null";
 
         return sqlType switch
         {

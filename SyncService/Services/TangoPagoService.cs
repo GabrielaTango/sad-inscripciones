@@ -17,6 +17,9 @@ public class TangoPagoService
 
     private int TalonarioRecibo => _config.GetValue("InscripcionSync:TalonarioRecibo", 16);
     private decimal CuentaHaber => _config.GetValue("InscripcionSync:CuentaHaber", 92M);
+
+    private decimal CuentaDebeMercadoLibre => 125M;
+
     private int IdSBA02 => _config.GetValue("InscripcionSync:IdSBA02", 7);
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
 
@@ -108,14 +111,14 @@ public class TangoPagoService
             await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
 
             // 6. SBA05 Debe
-            var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient, CuentaHaber);
+            //var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient);
 
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
             sba05d.Set("FILLER", inscId);
             sba05d.Set("N_COMP", nComp);
             sba05d.Set("COD_COMP", "REC");
-            sba05d.SetDecimal("COD_CTA", cuentaDebe);
+            sba05d.SetDecimal("COD_CTA", CuentaDebeMercadoLibre);
             sba05d.SetDecimal("MONTO", pago.Monto);
             sba05d.SetDecimal("CANT_MONE", pago.Monto);
             sba05d.SetDecimal("UNIDADES", pago.Monto);
