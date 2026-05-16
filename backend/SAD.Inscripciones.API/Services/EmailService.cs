@@ -11,7 +11,8 @@ namespace SAD.Inscripciones.API.Services;
 public class EmailService : IEmailService
 {
     public const string TemplateInscripcionConfirmada = "inscripcion-confirmada";
-    private const string SeedFileFor = "inscripcion-confirmada"; // si la DB está vacía, sembramos desde EmailTemplates/{codigo}.html
+    public const string TemplateReservaPagada = "reserva-pagada";
+    // Si BodyHtml en la DB está vacío, se siembra desde EmailTemplates/{codigo}.html.
     private static readonly TimeSpan ConfigCacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -35,20 +36,26 @@ public class EmailService : IEmailService
         _env = env;
     }
 
-    public async Task EnviarConfirmacionInscripcionAsync(Inscripcion inscripcion)
+    public Task EnviarConfirmacionInscripcionAsync(Inscripcion inscripcion) =>
+        EnviarTemplateInscripcionAsync(inscripcion, TemplateInscripcionConfirmada, "confirmación");
+
+    public Task EnviarReservaPagadaAsync(Inscripcion inscripcion) =>
+        EnviarTemplateInscripcionAsync(inscripcion, TemplateReservaPagada, "reserva pagada");
+
+    private async Task EnviarTemplateInscripcionAsync(Inscripcion inscripcion, string codigo, string descripcionLog)
     {
         try
         {
             var config = await GetConfigAsync();
             if (!config.Activo)
             {
-                _logger.LogInformation("Email deshabilitado en config; no se envía confirmación de inscripción {Id}", inscripcion.Id);
+                _logger.LogInformation("Email deshabilitado en config; no se envía mail {Desc} para inscripción {Id}", descripcionLog, inscripcion.Id);
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(inscripcion.Email))
             {
-                _logger.LogWarning("Inscripción {Id} sin Email; no se envía confirmación.", inscripcion.Id);
+                _logger.LogWarning("Inscripción {Id} sin Email; no se envía mail {Desc}.", inscripcion.Id, descripcionLog);
                 return;
             }
 
@@ -60,11 +67,11 @@ public class EmailService : IEmailService
             }
 
             var variables = BuildVariables(inscripcion, evento);
-            var template = await LoadTemplateAsync(TemplateInscripcionConfirmada);
+            var template = await LoadTemplateAsync(codigo);
 
             if (!template.Activo)
             {
-                _logger.LogInformation("Template {Codigo} inactivo; no se envía mail para inscripción {Id}", TemplateInscripcionConfirmada, inscripcion.Id);
+                _logger.LogInformation("Template {Codigo} inactivo; no se envía mail para inscripción {Id}", codigo, inscripcion.Id);
                 return;
             }
 
@@ -72,11 +79,11 @@ public class EmailService : IEmailService
             var body = ReplaceVariables(template.BodyHtml, variables);
 
             await SendAsync(config, inscripcion.Email, asunto, body);
-            _logger.LogInformation("Mail de confirmación enviado a {Email} para inscripción {Id}", inscripcion.Email, inscripcion.Id);
+            _logger.LogInformation("Mail {Desc} enviado a {Email} para inscripción {Id}", descripcionLog, inscripcion.Email, inscripcion.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falló envío de confirmación para inscripción {Id} ({Email})", inscripcion.Id, inscripcion.Email);
+            _logger.LogError(ex, "Falló envío de mail {Desc} para inscripción {Id} ({Email})", descripcionLog, inscripcion.Id, inscripcion.Email);
         }
     }
 
@@ -119,6 +126,8 @@ public class EmailService : IEmailService
         ["Lugar"] = "Hotel Sheraton, CABA",
         ["FechaEvento"] = "15/08/2026",
         ["Importe"] = "$ 25.000,00",
+        ["MontoReserva"] = "$ 7.500,00",
+        ["SaldoRestante"] = "$ 17.500,00",
         ["Cuotas"] = "3",
         ["NumeroInscripcion"] = "1234",
     };
@@ -245,6 +254,8 @@ public class EmailService : IEmailService
     private static Dictionary<string, string> BuildVariables(Inscripcion insc, Evento? evento)
     {
         var ar = CultureInfo.GetCultureInfo("es-AR");
+        var montoReserva = insc.MontoReserva ?? 0m;
+        var saldoRestante = Math.Max(0m, insc.PrecioFinal - montoReserva);
         return new Dictionary<string, string>
         {
             ["Nombre"] = insc.Nombre ?? string.Empty,
@@ -253,6 +264,8 @@ public class EmailService : IEmailService
             ["Lugar"] = evento?.Lugar ?? string.Empty,
             ["FechaEvento"] = evento != null ? evento.FechaInicio.ToString("dd/MM/yyyy") : string.Empty,
             ["Importe"] = insc.PrecioFinal.ToString("C2", ar),
+            ["MontoReserva"] = montoReserva.ToString("C2", ar),
+            ["SaldoRestante"] = saldoRestante.ToString("C2", ar),
             ["Cuotas"] = insc.CantidadCuotas?.ToString() ?? "1",
             ["NumeroInscripcion"] = insc.Id.ToString(),
         };

@@ -12,6 +12,8 @@ const MERGE_TAGS = {
   Lugar: { name: 'Lugar', value: '{{Lugar}}', sample: 'Hotel Sheraton' },
   FechaEvento: { name: 'Fecha del evento', value: '{{FechaEvento}}', sample: '15/08/2026' },
   Importe: { name: 'Importe', value: '{{Importe}}', sample: '$ 25.000,00' },
+  MontoReserva: { name: 'Monto de la reserva', value: '{{MontoReserva}}', sample: '$ 7.500,00' },
+  SaldoRestante: { name: 'Saldo restante', value: '{{SaldoRestante}}', sample: '$ 17.500,00' },
   Cuotas: { name: 'Cuotas', value: '{{Cuotas}}', sample: '3' },
   NumeroInscripcion: { name: 'N.º de inscripción', value: '{{NumeroInscripcion}}', sample: '1234' },
 }

@@ -11,6 +11,13 @@ public interface IEmailService
     Task EnviarConfirmacionInscripcionAsync(Inscripcion inscripcion);
 
     /// <summary>
+    /// Dispara el mail de reserva pagada (cuando la inscripcion pasa a estado "Reservada":
+    /// el alumno abonó el MontoReserva pero todavía debe el saldo). Mismo contrato que
+    /// la confirmación: no tira si falla.
+    /// </summary>
+    Task EnviarReservaPagadaAsync(Inscripcion inscripcion);
+
+    /// <summary>
     /// Envía un mail de prueba con la config actual al destinatario indicado.
     /// SÍ propaga errores (lo usa el panel admin para diagnóstico).
     /// </summary>

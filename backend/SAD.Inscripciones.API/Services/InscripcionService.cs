@@ -272,6 +272,10 @@ public class InscripcionService : IInscripcionService
             await _promocionCuponService.GenerarCuponesParaInscripcionAsync(inscripcion);
             await _emailService.EnviarConfirmacionInscripcionAsync(inscripcion);
         }
+        else if (estado == "Reservada")
+        {
+            await _emailService.EnviarReservaPagadaAsync(inscripcion);
+        }
     }
 
     public async Task DeleteAsync(int id, string deletedBy)
