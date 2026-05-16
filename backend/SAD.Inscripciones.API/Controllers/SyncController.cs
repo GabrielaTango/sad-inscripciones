@@ -79,10 +79,10 @@ public class SyncController : ControllerBase
 
         var (sql, parameters) = BuildBulkUpsert(
             "Clientes",
-            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended" },
-            new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended" },
+            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient" },
+            new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient" },
             items,
-            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended });
+            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended, c.CodClient });
 
         using var conn = _dbFactory.CreateConnection();
         await conn.ExecuteAsync(sql, parameters);
@@ -90,9 +90,9 @@ public class SyncController : ControllerBase
     }
 
     private const string SqlClientes = @"
-        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended)
-        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended)
-        ON DUPLICATE KEY UPDATE RazonSoci=@RazonSoci, Domicilio=@Domicilio, CodPostal=@CodPostal, CodProvin=@CodProvin, CodVended=@CodVended";
+        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended, CodClient)
+        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended, @CodClient)
+        ON DUPLICATE KEY UPDATE RazonSoci=@RazonSoci, Domicilio=@Domicilio, CodPostal=@CodPostal, CodProvin=@CodProvin, CodVended=@CodVended, CodClient=@CodClient";
 
     [HttpDelete("clientes/{cuit}")]
     public async Task<IActionResult> DeleteCliente(string cuit)
@@ -416,6 +416,7 @@ public class SyncClienteDto
     public string? CodPostal { get; set; }
     public string? CodProvin { get; set; }
     public string? CodVended { get; set; }
+    public string? CodClient { get; set; }
 }
 
 public class SyncArticuloDto

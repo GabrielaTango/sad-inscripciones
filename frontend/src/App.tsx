@@ -17,6 +17,7 @@ import LoginPage from './pages/LoginPage'
 import PagoResultadoPage from './pages/PagoResultadoPage'
 import MisInscripcionesPage from './pages/MisInscripcionesPage'
 import ResumenCuentaPage from './pages/ResumenCuentaPage'
+import CuponPagoFacilPage from './pages/CuponPagoFacilPage'
 import TiposEventoPage from './pages/admin/TiposEventoPage'
 import TiposAlumnoPage from './pages/admin/TiposAlumnoPage'
 import EventosAdminPage from './pages/admin/EventosAdminPage'
@@ -50,6 +51,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/mis-inscripciones" element={<MisInscripcionesPage />} />
             <Route path="/resumen-cuenta" element={<ResumenCuentaPage />} />
+            <Route path="/resumen-cuenta/cupon-pagofacil/:id" element={<CuponPagoFacilPage />} />
             <Route path="/pago/resultado" element={<PagoResultadoPage />} />
 
             <Route path="/capitulo" element={<CapituloRoute><CapituloLayout /></CapituloRoute>}>

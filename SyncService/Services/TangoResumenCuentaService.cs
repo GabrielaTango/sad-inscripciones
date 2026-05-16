@@ -26,7 +26,12 @@ public class TangoResumenCuentaService
     private readonly IConfiguration _config;
 
     private int TalonarioRecibo => _config.GetValue("InscripcionSync:TalonarioRecibo", 16);
-    private decimal CuentaHaber => _config.GetValue("InscripcionSync:CuentaHaber", 92M);
+    // Cuenta debe por medio de pago. La haber sale del vendedor del cliente
+    // (CA_1118_CTA_CUOTAS para CC, CA_1118_CTA_OTRA para eventos).
+    private decimal CuentaDebeMercadoPago => _config.GetValue("InscripcionSync:CuentaDebeMercadoPago", 125M);
+    private decimal CuentaDebePagoFacil => _config.GetValue("InscripcionSync:CuentaDebePagoFacil", 92M);
+    // Solo se usa como fallback en cobros presenciales sin CtaTesoreria (caso raro).
+    private decimal CuentaHaberPresencialFallback => _config.GetValue("InscripcionSync:CuentaHaber", 92M);
     private int IdSBA02 => _config.GetValue("InscripcionSync:IdSBA02", 7);
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
 
@@ -71,11 +76,37 @@ public class TangoResumenCuentaService
             var now = DateTime.Now;
             var extRef = pago.ExternalReference ?? string.Empty;
 
-            // Cuenta haber: snapshot del cobro si vino (cobro presencial por capítulo),
-            // sino la default de config (pagos vía MercadoPago del socio).
-            var cuentaHaberFinal = pago.CtaTesoreria.HasValue && pago.CtaTesoreria.Value > 0
-                ? (decimal)pago.CtaTesoreria.Value
-                : CuentaHaber;
+            // Resolución de cuentas para un recibo de cuenta corriente.
+            //   Haber = cuenta CUOTAS del vendedor del cliente (CA_1118_CTA_CUOTAS).
+            //   Debe  = cuenta caja según medio:
+            //     - PagoFacil → CuentaDebePagoFacil (92 por config).
+            //     - MercadoPago (default socio) → CuentaDebeMercadoPago (125).
+            //     - Presencial (CtaTesoreria del cobrador) → snapshot del CtaTesoreria.
+            //       En este caso el haber se invierte: CtaTesoreria va al debe (caja
+            //       del cobrador) y la cuenta CUOTAS al haber. Si el snapshot está
+            //       vacío, fallback al CuentaHaber legacy.
+            var esPagoFacil = string.Equals(pago.MedioPago, "PagoFacil", StringComparison.OrdinalIgnoreCase);
+            var esPresencial = !esPagoFacil && pago.CtaTesoreria.HasValue && pago.CtaTesoreria.Value > 0;
+
+            var cuentaCuotas = await TangoHelpers.TraerCuentaCuotasAsync(conn, tx, codClient);
+
+            decimal cuentaHaberFinal;
+            decimal cuentaDebeFinal;
+            if (esPresencial)
+            {
+                cuentaHaberFinal = cuentaCuotas == 0 ? CuentaHaberPresencialFallback : cuentaCuotas;
+                cuentaDebeFinal = (decimal)pago.CtaTesoreria!.Value;
+            }
+            else if (esPagoFacil)
+            {
+                cuentaHaberFinal = cuentaCuotas;
+                cuentaDebeFinal = CuentaDebePagoFacil;
+            }
+            else
+            {
+                cuentaHaberFinal = cuentaCuotas;
+                cuentaDebeFinal = CuentaDebeMercadoPago;
+            }
 
             // 2. Crear recibo REC
             var nCompRec = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioRecibo);
@@ -144,13 +175,12 @@ public class TangoResumenCuentaService
             await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
 
             // SBA05 Debe
-            var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient);
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
             //sba05d.Set("FILLER", extRef);
             sba05d.Set("N_COMP", nCompRec);
             sba05d.Set("COD_COMP", "REC");
-            sba05d.SetDecimal("COD_CTA", cuentaDebe);
+            sba05d.SetDecimal("COD_CTA", cuentaDebeFinal);
             sba05d.SetDecimal("MONTO", pago.Monto);
             sba05d.Set("COD_OPERAC", "");
             sba05d.SetDecimal("CANT_MONE", pago.Monto);

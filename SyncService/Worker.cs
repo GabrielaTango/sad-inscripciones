@@ -354,10 +354,10 @@ public class Worker : BackgroundService
         {
             case "Clientes":
                 var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>(
-                    "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended FROM GVA14 WHERE CUIT = @Clave",
+                    "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended, COD_CLIENT AS CodClient FROM GVA14 WHERE CUIT = @Clave",
                     new { Clave = clave });
                 if (cliente != null)
-                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim() });
+                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim() });
                 break;
 
             case "Articulos":
@@ -489,7 +489,7 @@ public class Worker : BackgroundService
 
             // Clientes (batch)
             var clientes = (await conn.QueryAsync<dynamic>(
-                "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
+                "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended, COD_CLIENT AS CodClient FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
                 .Select(c => new
                 {
                     cuit = ((string?)c.Cuit?.ToString())?.Trim(),
@@ -498,6 +498,7 @@ public class Worker : BackgroundService
                     codPostal = ((string?)c.CodPostal?.ToString())?.Trim(),
                     codProvin = ((string?)c.CodProvin?.ToString())?.Trim(),
                     codVended = ((string?)c.CodVended?.ToString())?.Trim(),
+                    codClient = ((string?)c.CodClient?.ToString())?.Trim(),
                 })
                 .Where(c => !string.IsNullOrEmpty(c.cuit))
                 .ToList();

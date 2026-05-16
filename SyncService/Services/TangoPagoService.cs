@@ -16,10 +16,7 @@ public class TangoPagoService
     private readonly TangoClienteService _clienteService;
 
     private int TalonarioRecibo => _config.GetValue("InscripcionSync:TalonarioRecibo", 16);
-    private decimal CuentaHaber => _config.GetValue("InscripcionSync:CuentaHaber", 92M);
-
-    private decimal CuentaDebeMercadoLibre => 125M;
-
+    private decimal CuentaDebeMercadoPago => _config.GetValue("InscripcionSync:CuentaDebeMercadoPago", 125M);
     private int IdSBA02 => _config.GetValue("InscripcionSync:IdSBA02", 7);
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
 
@@ -93,13 +90,14 @@ public class TangoPagoService
             // 4. Asiento contable del comprobante
             await conn.ExecuteAsync(sba04.InsertAsientoComprobante(), transaction: tx);
 
-            // 5. SBA05 Haber
+            // 5. SBA05 Haber: cuenta OTRA del vendedor del cliente (eventos).
+            var cuentaOtra = await TangoHelpers.TraerCuentaOtraAsync(conn, tx, codClient);
             var sba05h = new TangoSBA05();
             sba05h.ConfigurarDH("H");
             sba05h.Set("FILLER", inscId);
             sba05h.Set("N_COMP", nComp);
             sba05h.Set("COD_COMP", "REC");
-            sba05h.SetDecimal("COD_CTA", CuentaHaber);
+            sba05h.SetDecimal("COD_CTA", cuentaOtra);
             sba05h.SetDecimal("MONTO", pago.Monto);
             sba05h.SetDecimal("CANT_MONE", pago.Monto);
             sba05h.SetDecimal("UNIDADES", pago.Monto);
@@ -110,15 +108,13 @@ public class TangoPagoService
             await conn.ExecuteAsync(sba05h.Insert(), transaction: tx);
             await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
 
-            // 6. SBA05 Debe
-            //var cuentaDebe = await TangoHelpers.TraerCuentaDebeAsync(conn, tx, codClient);
-
+            // 6. SBA05 Debe: cuenta caja Mercado Pago (config).
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
             sba05d.Set("FILLER", inscId);
             sba05d.Set("N_COMP", nComp);
             sba05d.Set("COD_COMP", "REC");
-            sba05d.SetDecimal("COD_CTA", CuentaDebeMercadoLibre);
+            sba05d.SetDecimal("COD_CTA", CuentaDebeMercadoPago);
             sba05d.SetDecimal("MONTO", pago.Monto);
             sba05d.SetDecimal("CANT_MONE", pago.Monto);
             sba05d.SetDecimal("UNIDADES", pago.Monto);

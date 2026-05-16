@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Check, X } from 'lucide-react'
+import { Search, Check, X, Barcode } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
 import { pagosCuentaCorrienteService } from '../../services/pagosCuentaCorrienteService'
 import type { PagoCuentaCorriente } from '../../services/resumenCuentaService'
@@ -65,14 +65,21 @@ const PagosCuentaCorrienteAdminPage = () => {
     return map[estado] || 'bg-blue-100 text-blue-700'
   }
 
+  // Mostramos "MercadoPago" cuando el campo es null por compatibilidad histórica
+  // (todos los pagos previos a la migración de medios eran MP).
+  const medioLabel = (m?: string | null) => m && m.length > 0 ? m : 'MercadoPago'
+  const medioBadge = (m?: string | null) => {
+    if (m === 'PagoFacil') return 'bg-violet-100 text-violet-700'
+    if (m === 'Contado' || m === 'Transferencia') return 'bg-slate-100 text-slate-700'
+    return 'bg-blue-100 text-blue-700'
+  }
+
   const columns = [
     { key: 'id', label: 'ID' },
     { key: 'cuit', label: 'CUIT' },
     { key: 'monto', label: 'Monto', render: (i: PagoCuentaCorriente) => formatCurrency(i.monto) },
-    { key: 'preferenceId', label: 'Preference ID', render: (i: PagoCuentaCorriente) => (
-      <span className="truncate inline-block" style={{ maxWidth: '150px' }} title={i.preferenceId || ''}>
-        {i.preferenceId || '-'}
-      </span>
+    { key: 'medioPago', label: 'Medio', render: (i: PagoCuentaCorriente) => (
+      <span className={`badge ${medioBadge(i.medioPago)}`}>{medioLabel(i.medioPago)}</span>
     )},
     { key: 'externalReference', label: 'Referencia', render: (i: PagoCuentaCorriente) => (
       <span className="text-sm">{i.externalReference}</span>
@@ -103,16 +110,29 @@ const PagosCuentaCorrienteAdminPage = () => {
         actions={(item: unknown) => {
           const pago = item as PagoCuentaCorriente
           const isLoading = actionId === pago.id
+          const esPagoFacil = pago.medioPago === 'PagoFacil'
           return (
             <>
-              <button
-                className="btn-outline-primary btn-sm p-1.5"
-                onClick={() => handleVerificar(pago.id)}
-                disabled={isLoading}
-                title="Verificar en Mercado Pago"
-              >
-                {isLoading ? <span className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full inline-block"></span> : <Search size={16} />}
-              </button>
+              {esPagoFacil ? (
+                <a
+                  className="btn-outline-primary btn-sm p-1.5"
+                  href={`/resumen-cuenta/cupon-pagofacil/${pago.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ver cupón Pago Fácil"
+                >
+                  <Barcode size={16} />
+                </a>
+              ) : (
+                <button
+                  className="btn-outline-primary btn-sm p-1.5"
+                  onClick={() => handleVerificar(pago.id)}
+                  disabled={isLoading}
+                  title="Verificar en Mercado Pago"
+                >
+                  {isLoading ? <span className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full inline-block"></span> : <Search size={16} />}
+                </button>
+              )}
               {pago.estadoPago !== 'Aprobado' && (
                 <button
                   className="btn-outline-success btn-sm p-1.5"

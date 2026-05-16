@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { resumenCuentaService } from '../services/resumenCuentaService'
+import { resumenCuentaService, type ResumenCuentaMeta } from '../services/resumenCuentaService'
 import type { ResumenCuenta } from '../types/models'
+import pagoMisCuentasLogo from '../assets/pago-mis-cuentas.png'
 import {
   Receipt,
   CheckCircle,
@@ -12,6 +13,7 @@ import {
   CreditCard,
   Info,
   X,
+  Barcode,
 } from 'lucide-react'
 
 const ResumenCuentaPage = () => {
@@ -19,6 +21,7 @@ const ResumenCuentaPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [movimientos, setMovimientos] = useState<ResumenCuenta[]>([])
+  const [meta, setMeta] = useState<ResumenCuentaMeta | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -27,8 +30,12 @@ const ResumenCuentaPage = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const mov = await resumenCuentaService.getByCuit()
+      const [mov, m] = await Promise.all([
+        resumenCuentaService.getByCuit(),
+        resumenCuentaService.getMeta().catch(() => null),
+      ])
       setMovimientos(mov)
+      setMeta(m)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar resumen')
     } finally {
@@ -130,6 +137,21 @@ const ResumenCuentaPage = () => {
     }
   }
 
+  const handlePagarPagoFacil = async () => {
+    if (selectedIds.size === 0) return
+    setPaying(true)
+    setError('')
+    try {
+      const result = await resumenCuentaService.generarCuponPagoFacil(Array.from(selectedIds))
+      window.open(`/resumen-cuenta/cupon-pagofacil/${result.id}`, '_blank', 'noopener')
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al generar el cupón')
+    } finally {
+      setPaying(false)
+    }
+  }
+
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('es-AR') : '-'
   const formatCurrency = (n: number) => `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
 
@@ -218,16 +240,31 @@ const ResumenCuentaPage = () => {
           <div className="card rounded-2xl border-slate-200 shadow-md mt-3">
             <div className="p-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                <div className="md:col-span-6">
+                <div className="md:col-span-5">
                   <div className="text-slate-600 text-sm">
                     {selectedIds.size} comprobante{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}
                   </div>
+                  {meta?.codClient && (
+                    <div className="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <img
+                        src={pagoMisCuentasLogo}
+                        alt="Pago Mis Cuentas"
+                        className="h-7 w-auto"
+                      />
+                      <div className="leading-tight">
+                        <div className="text-[11px] uppercase tracking-wider text-slate-500">Identificador</div>
+                        <div className="font-mono font-semibold text-slate-800">
+                          {meta.codClient.padStart(8, '0')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="md:col-span-3 md:text-right">
                   <div className="text-slate-600 text-sm">Total a pagar</div>
                   <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalSeleccionado)}</div>
                 </div>
-                <div className="md:col-span-3 md:text-right mt-2 md:mt-0">
+                <div className="md:col-span-4 md:text-right mt-2 md:mt-0 flex flex-col gap-2">
                   <button
                     className="btn-accent btn-lg w-full"
                     disabled={selectedIds.size === 0 || paying}
@@ -236,8 +273,15 @@ const ResumenCuentaPage = () => {
                     {paying ? (
                       <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Generando...</>
                     ) : (
-                      <span className="flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" />Pagar</span>
+                      <span className="flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" />Pagar con Mercado Pago</span>
                     )}
+                  </button>
+                  <button
+                    className="btn-outline-primary btn-lg w-full"
+                    disabled={selectedIds.size === 0 || paying}
+                    onClick={handlePagarPagoFacil}
+                  >
+                    <span className="flex items-center justify-center gap-2"><Barcode className="w-5 h-5" />Pagar con Pago Fácil</span>
                   </button>
                 </div>
               </div>

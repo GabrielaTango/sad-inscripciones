@@ -47,12 +47,24 @@ internal static class TangoHelpers
         return string.IsNullOrWhiteSpace(cod) ? null : cod.Trim();
     }
 
-    public static async Task<decimal> TraerCuentaDebeAsync(SqlConnection conn, SqlTransaction tx, string codClient)
+    // Cuenta del vendedor del cliente leída de CAMPOS_ADICIONALES de GVA23.
+    // Hay tres "buckets" según el origen del cobro:
+    //   CA_1118_CTA_CUOTAS       → recibos de cuenta corriente (cuotas societarias).
+    //   CA_1118_CTA_OTRA         → recibos de eventos (inscripciones, congresos).
+    //   CA_1118_CTA_MERCADO_PAGO → conservado por si algún flujo legacy lo usa.
+    public static Task<decimal> TraerCuentaCuotasAsync(SqlConnection conn, SqlTransaction tx, string codClient)
+        => TraerCuentaCampoAdicionalAsync(conn, tx, codClient, "CA_1118_CTA_CUOTAS");
+
+    public static Task<decimal> TraerCuentaOtraAsync(SqlConnection conn, SqlTransaction tx, string codClient)
+        => TraerCuentaCampoAdicionalAsync(conn, tx, codClient, "CA_1118_CTA_OTRA");
+
+    private static async Task<decimal> TraerCuentaCampoAdicionalAsync(
+        SqlConnection conn, SqlTransaction tx, string codClient, string campo)
     {
         var cta = await conn.QueryFirstOrDefaultAsync<decimal?>(
-            @"SELECT CAST(t2.CAMPOS_ADICIONALES.value('(/CAMPOS_ADICIONALES/CA_1118_CTA_MERCADO_PAGO)[1]', 'varchar(10)') AS DECIMAL)
-              FROM GVA14 t1 INNER JOIN GVA23 t2 ON t1.COD_VENDED = t2.COD_VENDED
-              WHERE t1.COD_CLIENT = @CodClient AND t1.COD_VENDED <> '90'",
+            $@"SELECT CAST(t2.CAMPOS_ADICIONALES.value('(/CAMPOS_ADICIONALES/{campo})[1]', 'varchar(10)') AS DECIMAL)
+               FROM GVA14 t1 INNER JOIN GVA23 t2 ON t1.COD_VENDED = t2.COD_VENDED
+               WHERE t1.COD_CLIENT = @CodClient AND t1.COD_VENDED <> '90'",
             new { CodClient = codClient }, tx);
         return cta ?? 0;
     }

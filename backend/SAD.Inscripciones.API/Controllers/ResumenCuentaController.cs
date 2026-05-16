@@ -6,6 +6,7 @@ using MercadoPago.Resource.Preference;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.Data;
+using SAD.Inscripciones.API.Helpers;
 using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
@@ -72,6 +73,26 @@ public class ResumenCuentaController : ControllerBase
         return Ok(new { count });
     }
 
+    [HttpGet("meta")]
+    public async Task<IActionResult> GetMeta()
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+        var row = await conn.QueryFirstOrDefaultAsync<(string? CodClient, string? RazonSoci)>(
+            "SELECT CodClient, RazonSoci FROM Clientes WHERE Cuit = @Cuit",
+            new { Cuit = cuit });
+
+        return Ok(new
+        {
+            cuit,
+            codClient = row.CodClient?.Trim(),
+            razonSoci = row.RazonSoci?.Trim(),
+        });
+    }
+
     private static string LockKey(string? tComp, string? nComp, DateTime fechaVto)
         => $"{tComp?.Trim()}|{nComp?.Trim()}|{fechaVto:yyyy-MM-dd}";
 
@@ -112,13 +133,114 @@ public class ResumenCuentaController : ControllerBase
 
         using var conn = _dbFactory.CreateConnection();
         var pagos = await conn.QueryAsync<PagoCuentaCorrienteDto>(
-            @"SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago, MpPaymentId, FechaPago, CreatedAt
+            @"SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago,
+                     MpPaymentId, FechaPago, CreatedAt, MedioPago, CodigoBarra, FechaVencimiento
               FROM PagosCuentaCorriente
               WHERE Cuit = @Cuit
               ORDER BY CreatedAt DESC",
             new { Cuit = cuit });
 
         return Ok(pagos);
+    }
+
+    [HttpGet("pagos/{id}")]
+    public async Task<IActionResult> GetPagoById(int id)
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+        var pago = await conn.QueryFirstOrDefaultAsync<PagoCuentaCorrienteDto>(
+            @"SELECT p.Id, p.Cuit, p.Monto, p.Comprobantes, p.ExternalReference, p.PreferenceId, p.EstadoPago,
+                     p.MpPaymentId, p.FechaPago, p.CreatedAt, p.MedioPago, p.CodigoBarra, p.FechaVencimiento,
+                     c.RazonSoci
+              FROM PagosCuentaCorriente p
+              LEFT JOIN Clientes c ON c.Cuit = p.Cuit
+              WHERE p.Id = @Id AND p.Cuit = @Cuit",
+            new { Id = id, Cuit = cuit });
+
+        if (pago == null)
+            return NotFound(new { error = "Pago no encontrado" });
+
+        return Ok(pago);
+    }
+
+    [HttpPost("generar-cupon-pagofacil")]
+    public async Task<IActionResult> GenerarCuponPagoFacil([FromBody] GenerarPagoCuentaRequest request)
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit))
+            return Unauthorized();
+
+        if (request.Ids == null || request.Ids.Length == 0)
+            return BadRequest(new { error = "Debe seleccionar al menos un comprobante" });
+
+        using var conn = _dbFactory.CreateConnection();
+        var movimientos = (await conn.QueryAsync<ResumenCuentaDto>(
+            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
+            new { Cuit = cuit, request.Ids })).ToList();
+
+        if (movimientos.Count == 0)
+            return NotFound(new { error = "No se encontraron comprobantes" });
+
+        var total = movimientos.Sum(m => m.Saldo);
+        if (total <= 0)
+            return BadRequest(new { error = "El total a pagar debe ser mayor a cero" });
+
+        var externalReference = $"PF-{cuit}-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        var comprobantesJson = JsonSerializer.Serialize(
+            movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo }));
+        var fechaVencimiento = DateTime.UtcNow.AddDays(30);
+
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            // Insertamos primero sin codigo de barra para obtener el Id auto-incremental.
+            // El codigo Pago Facil incluye el id desplazado +900000 en la "cuenta",
+            // asi que no se puede calcular antes del insert.
+            var id = await conn.ExecuteScalarAsync<int>(@"
+                INSERT INTO PagosCuentaCorriente
+                    (Cuit, Monto, Comprobantes, ExternalReference, EstadoPago, MedioPago, FechaVencimiento, CreatedAt, UpdatedAt)
+                VALUES
+                    (@Cuit, @Monto, @Comprobantes, @ExternalReference, 'Pendiente', 'PagoFacil', @FechaVencimiento, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+                SELECT LAST_INSERT_ID();",
+                new
+                {
+                    Cuit = cuit,
+                    Monto = total,
+                    Comprobantes = comprobantesJson,
+                    ExternalReference = externalReference,
+                    FechaVencimiento = fechaVencimiento,
+                }, tx);
+
+            var codigoBarra = PagoFacilCodigo.Generar(id, total, fechaVencimiento);
+
+            await conn.ExecuteAsync(
+                "UPDATE PagosCuentaCorriente SET CodigoBarra = @Codigo WHERE Id = @Id",
+                new { Codigo = codigoBarra, Id = id }, tx);
+
+            tx.Commit();
+
+            _logger.LogInformation(
+                "Cupon Pago Facil generado: CUIT={Cuit}, Id={Id}, Monto={Total}, Vto={Vto:yyyy-MM-dd}",
+                cuit, id, total, fechaVencimiento);
+
+            return Ok(new GenerarCuponPagoFacilResult
+            {
+                Id = id,
+                ExternalReference = externalReference,
+                Total = total,
+                CodigoBarra = codigoBarra,
+                FechaVencimiento = fechaVencimiento,
+            });
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
     }
 
     [HttpPost("generar-pago")]
@@ -210,18 +332,24 @@ public class ResumenCuentaController : ControllerBase
 
         using var conn = _dbFactory.CreateConnection();
 
+        // Cleanup: 30 dias para cupones Pago Facil (su FechaVencimiento es a 30d), 7 dias para el resto (MP).
         var eliminados = await conn.ExecuteAsync(@"
             DELETE FROM PagosCuentaCorriente
             WHERE Cuit = @Cuit
               AND EstadoPago = 'Pendiente'
-              AND CreatedAt < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)",
+              AND (
+                (MedioPago = 'PagoFacil' AND CreatedAt < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 DAY))
+                OR (COALESCE(MedioPago, '') <> 'PagoFacil' AND CreatedAt < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY))
+              )",
             new { Cuit = cuit });
 
+        // Solo consultamos MP por pagos que no son Pago Facil — los PF se confirman manualmente.
         var pendientes = (await conn.QueryAsync<PagoCuentaCorrienteDto>(@"
             SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago, MpPaymentId, FechaPago, CreatedAt
             FROM PagosCuentaCorriente
             WHERE Cuit = @Cuit
               AND EstadoPago = 'Pendiente'
+              AND COALESCE(MedioPago, '') <> 'PagoFacil'
               AND CreatedAt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)",
             new { Cuit = cuit })).ToList();
 
@@ -345,7 +473,8 @@ public class ResumenCuentaController : ControllerBase
     {
         using var conn = _dbFactory.CreateConnection();
         var pagos = await conn.QueryAsync<PagoCuentaCorrienteDto>(
-            @"SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago, MpPaymentId, FechaPago, CreatedAt
+            @"SELECT Id, Cuit, Monto, Comprobantes, ExternalReference, PreferenceId, EstadoPago,
+                     MpPaymentId, FechaPago, CreatedAt, MedioPago, CodigoBarra, FechaVencimiento
               FROM PagosCuentaCorriente
               ORDER BY CreatedAt DESC");
 
@@ -442,13 +571,26 @@ public class PagoCuentaCorrienteDto
     public int Id { get; set; }
     public string Cuit { get; set; } = string.Empty;
     public decimal Monto { get; set; }
-    public string Comprobantes { get; set; } = string.Empty;
+    public string? Comprobantes { get; set; }
     public string ExternalReference { get; set; } = string.Empty;
     public string? PreferenceId { get; set; }
     public string EstadoPago { get; set; } = string.Empty;
     public long? MpPaymentId { get; set; }
     public DateTime? FechaPago { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? MedioPago { get; set; }
+    public string? CodigoBarra { get; set; }
+    public DateTime? FechaVencimiento { get; set; }
+    public string? RazonSoci { get; set; }
+}
+
+public class GenerarCuponPagoFacilResult
+{
+    public int Id { get; set; }
+    public string ExternalReference { get; set; } = string.Empty;
+    public decimal Total { get; set; }
+    public string CodigoBarra { get; set; } = string.Empty;
+    public DateTime FechaVencimiento { get; set; }
 }
 
 public class GenerarPagoCuentaRequest
