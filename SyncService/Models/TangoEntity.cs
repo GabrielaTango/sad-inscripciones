@@ -110,8 +110,22 @@ public abstract class TangoEntity
                 $"Columna {TableName}.{field} no existe en INFORMATION_SCHEMA. " +
                 $"Revisar XML default o agregar la tabla a TablasInsertables.");
 
+        // Para columnas char/varchar/nchar/nvarchar truncamos al ancho real para evitar 8152.
+        if (IsBoundedStringType(sqlType)
+            && TangoSchemaCache.TryGetMaxLength(TableName, field, out var maxLen)
+            && value.Length > maxLen)
+        {
+            Serilog.Log.Warning(
+                "Truncando {Table}.{Field}: {Original} chars → {Max} (valor=\"{Value}\")",
+                TableName, field, value.Length, maxLen, value);
+            value = value.Substring(0, maxLen);
+        }
+
         return FormatBySqlType(sqlType, value);
     }
+
+    private static bool IsBoundedStringType(string sqlType) =>
+        sqlType is "char" or "nchar" or "varchar" or "nvarchar";
 
     /// <summary>Formatea un valor según el DATA_TYPE de SQL Server.</summary>
     protected static string FormatBySqlType(string sqlType, string value)

@@ -11,8 +11,10 @@ namespace SyncService.Helpers;
 /// </summary>
 public static class TangoSchemaCache
 {
-    // tabla (case-insensitive) -> columna (case-insensitive) -> sqlType (lowercase)
-    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, string>> _byTable
+    public readonly record struct ColumnInfo(string SqlType, int? MaxLength);
+
+    // tabla (case-insensitive) -> columna (case-insensitive) -> ColumnInfo
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, ColumnInfo>> _byTable
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Tablas Tango en las que el SyncService genera INSERTs.</summary>
@@ -24,22 +26,24 @@ public static class TangoSchemaCache
         "ASIENTO_COMPROBANTE_SB",
     ];
 
-    /// <summary>Carga el schema (column_name, data_type) de una tabla y lo cachea.</summary>
+    /// <summary>Carga el schema (column_name, data_type, character_maximum_length) y lo cachea.</summary>
     public static async Task LoadAsync(SqlConnection conn, string tableName, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT COLUMN_NAME, DATA_TYPE
+            SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = @TableName";
 
-        var rows = await conn.QueryAsync<(string ColumnName, string DataType)>(
+        var rows = await conn.QueryAsync<(string ColumnName, string DataType, int? CharMaxLength)>(
             new CommandDefinition(sql, new { TableName = tableName }, cancellationToken: ct));
 
-        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (col, type) in rows)
+        var dict = new Dictionary<string, ColumnInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (col, type, maxLen) in rows)
         {
             if (string.IsNullOrEmpty(col) || string.IsNullOrEmpty(type)) continue;
-            dict[col] = type.Trim().ToLowerInvariant();
+            // CHARACTER_MAXIMUM_LENGTH = -1 para varchar(max)/nvarchar(max)/text/ntext → sin límite efectivo.
+            int? normalizedMax = maxLen.HasValue && maxLen.Value > 0 ? maxLen.Value : null;
+            dict[col] = new ColumnInfo(type.Trim().ToLowerInvariant(), normalizedMax);
         }
 
         if (dict.Count == 0)
@@ -58,8 +62,19 @@ public static class TangoSchemaCache
     {
         sqlType = string.Empty;
         if (!_byTable.TryGetValue(tableName, out var cols)) return false;
-        if (!cols.TryGetValue(columnName, out var t)) return false;
-        sqlType = t;
+        if (!cols.TryGetValue(columnName, out var info)) return false;
+        sqlType = info.SqlType;
+        return true;
+    }
+
+    /// <summary>Ancho máximo en caracteres para char/varchar/nchar/nvarchar. false si la columna no existe o no tiene límite (max/text/ntext).</summary>
+    public static bool TryGetMaxLength(string tableName, string columnName, out int maxLength)
+    {
+        maxLength = 0;
+        if (!_byTable.TryGetValue(tableName, out var cols)) return false;
+        if (!cols.TryGetValue(columnName, out var info)) return false;
+        if (!info.MaxLength.HasValue) return false;
+        maxLength = info.MaxLength.Value;
         return true;
     }
 

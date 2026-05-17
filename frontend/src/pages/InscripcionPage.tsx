@@ -270,7 +270,7 @@ const InscripcionPage = () => {
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Localidad</label>
-                        <input type="text" className="form-input" value={form.localidad || ''} onChange={(e) => setForm({ ...form, localidad: e.target.value })} />
+                        <input type="text" className="form-input" maxLength={20} value={form.localidad || ''} onChange={(e) => setForm({ ...form, localidad: e.target.value })} />
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Provincia</label>
