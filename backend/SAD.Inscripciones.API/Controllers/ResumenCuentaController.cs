@@ -98,10 +98,14 @@ public class ResumenCuentaController : ControllerBase
 
     private async Task<HashSet<string>> GetLockedComprobantesAsync(System.Data.IDbConnection conn, string cuit)
     {
+        // Solo escondemos comprobantes ya cobrados (Aprobado). Pendientes quedan visibles:
+        //   - MP: el callback /confirmar-pago verifica contra MP al volver y, si está aprobado,
+        //         actualiza el estado. validar-pendientes (que corre en cada carga) también barre.
+        //   - PagoFacil: queda pendiente hasta que el operador lo apruebe manualmente desde el admin.
         var lockedJson = await conn.QueryAsync<string>(@"
             SELECT Comprobantes
             FROM PagosCuentaCorriente
-            WHERE Cuit = @Cuit AND EstadoPago IN ('Pendiente', 'Aprobado')",
+            WHERE Cuit = @Cuit AND EstadoPago = 'Aprobado'",
             new { Cuit = cuit });
 
         var locked = new HashSet<string>();
@@ -146,18 +150,22 @@ public class ResumenCuentaController : ControllerBase
     [HttpGet("pagos/{id}")]
     public async Task<IActionResult> GetPagoById(int id)
     {
+        // Admin puede ver cualquier pago (lo usa la acción "Ver cupón" del panel).
+        // Socio sólo los suyos: se scopea por el CUIT del JWT.
+        var isAdmin = User.IsInRole("Admin");
         var cuit = GetCuit();
-        if (string.IsNullOrEmpty(cuit))
+        if (!isAdmin && string.IsNullOrEmpty(cuit))
             return Unauthorized();
 
+        var filtroCuit = isAdmin ? string.Empty : " AND p.Cuit = @Cuit";
         using var conn = _dbFactory.CreateConnection();
         var pago = await conn.QueryFirstOrDefaultAsync<PagoCuentaCorrienteDto>(
-            @"SELECT p.Id, p.Cuit, p.Monto, p.Comprobantes, p.ExternalReference, p.PreferenceId, p.EstadoPago,
-                     p.MpPaymentId, p.FechaPago, p.CreatedAt, p.MedioPago, p.CodigoBarra, p.FechaVencimiento,
-                     c.RazonSoci
-              FROM PagosCuentaCorriente p
-              LEFT JOIN Clientes c ON c.Cuit = p.Cuit
-              WHERE p.Id = @Id AND p.Cuit = @Cuit",
+            $@"SELECT p.Id, p.Cuit, p.Monto, p.Comprobantes, p.ExternalReference, p.PreferenceId, p.EstadoPago,
+                      p.MpPaymentId, p.FechaPago, p.CreatedAt, p.MedioPago, p.CodigoBarra, p.FechaVencimiento,
+                      c.RazonSoci
+               FROM PagosCuentaCorriente p
+               LEFT JOIN Clientes c ON c.Cuit = p.Cuit
+               WHERE p.Id = @Id{filtroCuit}",
             new { Id = id, Cuit = cuit });
 
         if (pago == null)

@@ -46,13 +46,14 @@ public class TangoPagoService
 
             // 2. Numero de comprobante del recibo
             var nComp = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioRecibo);
-            var idAsientoModelo = await TangoHelpers.TraerIdAsientoModeloAsync(conn, tx, TipoAsientoModelo);
+            var codVended = await TangoHelpers.TraerCodVendedClienteAsync(conn, tx, codClient) ?? "09";
 
             // 3. Crear cabecera del recibo en GVA12 (T_COMP='REC', ESTADO='CTA')
             // Necesario para que la imputación posterior (GVA07) pueda referenciar ID_GVA12_CAN.
             var gva12Rec = new TangoGVA12();
             gva12Rec.Set("FILLER", inscId);
             gva12Rec.Set("COD_CLIENT", codClient);
+            gva12Rec.Set("COD_VENDED", codVended);
             gva12Rec.Set("N_COMP", nComp);
             gva12Rec.SetInt("TALONARIO", TalonarioRecibo);
             gva12Rec.SetDate("FECHA_EMIS", now);
@@ -63,7 +64,6 @@ public class TangoPagoService
             gva12Rec.Set("ESTADO_UNI", "CTA");
             gva12Rec.Set("LEYENDA_1", "RECINSCRIP");
             gva12Rec.Set("LEYENDA_2", inscId);
-            gva12Rec.SetInt("ID_ASIENTO_MODELO_GV", idAsientoModelo);
             await conn.ExecuteAsync(gva12Rec.Insert(), transaction: tx);
 
             // 4. Crear comprobante de tesorería (SBA04)

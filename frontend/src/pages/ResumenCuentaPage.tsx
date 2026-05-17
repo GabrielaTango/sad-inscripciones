@@ -25,7 +25,7 @@ const ResumenCuentaPage = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [paying, setPaying] = useState(false)
+  const [paying, setPaying] = useState<null | 'mp' | 'pf'>(null)
   const [pagoResultado, setPagoResultado] = useState<{ status: string; message: string } | null>(null)
 
   const loadData = useCallback(async () => {
@@ -85,10 +85,6 @@ const ResumenCuentaPage = () => {
         setPagoResultado({ status: 'danger', message: 'El pago fue rechazado. Puede intentar nuevamente.' })
         loadData()
       } else {
-        setPagoResultado({
-          status: 'warning',
-          message: 'El pago esta pendiente de confirmacion. La imputacion se vera reflejada una vez que se acredite.'
-        })
         loadData()
       }
     }
@@ -124,7 +120,7 @@ const ResumenCuentaPage = () => {
 
   const handlePagar = async () => {
     if (selectedIds.size === 0) return
-    setPaying(true)
+    setPaying('mp')
     setError('')
     try {
       const result = await resumenCuentaService.generarPago(Array.from(selectedIds))
@@ -133,22 +129,20 @@ const ResumenCuentaPage = () => {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al generar el pago')
-      setPaying(false)
+      setPaying(null)
     }
   }
 
   const handlePagarPagoFacil = async () => {
     if (selectedIds.size === 0) return
-    setPaying(true)
+    setPaying('pf')
     setError('')
     try {
       const result = await resumenCuentaService.generarCuponPagoFacil(Array.from(selectedIds))
-      window.open(`/resumen-cuenta/cupon-pagofacil/${result.id}`, '_blank', 'noopener')
-      await loadData()
+      navigate(`/resumen-cuenta/cupon-pagofacil/${result.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al generar el cupón')
-    } finally {
-      setPaying(false)
+      setPaying(null)
     }
   }
 
@@ -267,10 +261,10 @@ const ResumenCuentaPage = () => {
                 <div className="md:col-span-4 md:text-right mt-2 md:mt-0 flex flex-col gap-2">
                   <button
                     className="btn-accent btn-lg w-full"
-                    disabled={selectedIds.size === 0 || paying}
+                    disabled={selectedIds.size === 0 || paying !== null}
                     onClick={handlePagar}
                   >
-                    {paying ? (
+                    {paying === 'mp' ? (
                       <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Generando...</>
                     ) : (
                       <span className="flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" />Pagar con Mercado Pago</span>
@@ -278,10 +272,14 @@ const ResumenCuentaPage = () => {
                   </button>
                   <button
                     className="btn-outline-primary btn-lg w-full"
-                    disabled={selectedIds.size === 0 || paying}
+                    disabled={selectedIds.size === 0 || paying !== null}
                     onClick={handlePagarPagoFacil}
                   >
-                    <span className="flex items-center justify-center gap-2"><Barcode className="w-5 h-5" />Pagar con Pago Fácil</span>
+                    {paying === 'pf' ? (
+                      <><span className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>Generando cupón...</>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2"><Barcode className="w-5 h-5" />Pagar con Pago Fácil</span>
+                    )}
                   </button>
                 </div>
               </div>

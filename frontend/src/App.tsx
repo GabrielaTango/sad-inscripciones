@@ -39,8 +39,10 @@ import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 function App() {
   return (
     <AuthProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
+      <div className="flex flex-col min-h-screen print:min-h-0">
+        <div className="print:hidden">
+          <Navbar />
+        </div>
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -81,7 +83,9 @@ function App() {
             </Route>
           </Routes>
         </main>
-        <Footer />
+        <div className="print:hidden">
+          <Footer />
+        </div>
       </div>
     </AuthProvider>
   )

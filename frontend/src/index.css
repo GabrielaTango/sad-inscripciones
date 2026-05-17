@@ -153,3 +153,16 @@
     @apply p-4 rounded-xl bg-slate-50 text-slate-700 border border-slate-200;
   }
 }
+
+/* ---- Print: hoja limpia ---- */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  /* Evita que el navegador inyecte URL/fecha en el header del print
+     y dejá márgenes mínimos para que el cupón entre cómodo. */
+  @page {
+    margin: 12mm;
+  }
+}

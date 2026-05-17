@@ -110,13 +110,12 @@ public class TangoResumenCuentaService
 
             // 2. Crear recibo REC
             var nCompRec = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioRecibo);
-            var idAsientoModelo = await TangoHelpers.TraerIdAsientoModeloAsync(conn, tx, TipoAsientoModelo);
+            var codVended = await TangoHelpers.TraerCodVendedClienteAsync(conn, tx, codClient) ?? "09";
 
             var gva12Rec = new TangoGVA12();
             //gva12Rec.Set("FILLER", extRef);
             gva12Rec.Set("COD_CLIENT", codClient);
-            if (!string.IsNullOrEmpty(pago.CodVended))
-                gva12Rec.Set("COD_VENDED", pago.CodVended);
+            gva12Rec.Set("COD_VENDED", codVended);
             gva12Rec.Set("N_COMP", nCompRec);
             gva12Rec.SetInt("TALONARIO", TalonarioRecibo);
             gva12Rec.SetDate("FECHA_EMIS", now);
@@ -127,7 +126,6 @@ public class TangoResumenCuentaService
             gva12Rec.Set("ESTADO_UNI", "CTA");
             gva12Rec.Set("LEYENDA_1", "RECCC");
             gva12Rec.Set("LEYENDA_2", Truncar(extRef, 40));
-            gva12Rec.SetInt("ID_ASIENTO_MODELO_GV", idAsientoModelo);
             await conn.ExecuteAsync(gva12Rec.Insert(), transaction: tx);
 
             // SBA04

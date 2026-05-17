@@ -101,7 +101,7 @@ const CuponPagoFacilPage = () => {
   const cliente = pago.razonSoci?.trim() || pago.cuit
 
   return (
-    <div className="bg-slate-50 min-h-screen">
+    <div className="bg-slate-50 min-h-screen print:bg-white print:min-h-0">
       {/* Barra de acciones (oculta al imprimir) */}
       <div className="print:hidden bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -117,7 +117,7 @@ const CuponPagoFacilPage = () => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-8 print:py-2">
+      <div className="max-w-3xl mx-auto px-4 py-8 print:p-0">
         <div className="bg-white rounded-lg shadow print:shadow-none border border-slate-200 print:border-0">
           {/* Cabecera */}
           <div className="border-b border-slate-200 px-8 py-6 flex items-center justify-between">
