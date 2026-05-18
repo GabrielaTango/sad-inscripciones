@@ -129,12 +129,12 @@ const HomePage = () => {
               <p className="mt-3">No hay próximos eventos por el momento.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-wrap justify-center gap-6">
               {proximos.map((evento) => {
                 const tipo = tipoNombre(evento.tipoEventoId)
                 const esVirtual = evento.modalidad?.toLowerCase() === 'virtual'
                 return (
-                  <div key={evento.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 h-full">
+                  <div key={evento.id} className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)] bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300">
                     <div className="p-6">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mb-2 ${badgeColor(tipo)}`}>{tipo}</span>
                       <h5 className="text-lg font-bold text-slate-800">{evento.titulo}</h5>
