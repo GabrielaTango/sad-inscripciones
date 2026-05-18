@@ -245,7 +245,14 @@ public class SyncController : ControllerBase
         var inscripciones = await conn.QueryAsync<SyncInscripcionDto>(@"
             SELECT i.Id, i.Documento, i.Nombre, i.Apellido, i.Email, i.Telefono,
                    i.Domicilio, i.CodigoPostal, i.Localidad, i.Provincia, i.Celular,
-                   i.PrecioFinal, i.FechaInscripcion, i.EventoId,
+                   COALESCE((
+                       SELECT SUM(p.Monto)
+                       FROM Pagos p
+                       WHERE p.InscripcionId = i.Id
+                         AND p.EstadoPago = 'Confirmado'
+                         AND p.DeletedAt IS NULL
+                   ), i.PrecioFinal) AS PrecioFinal,
+                   i.FechaInscripcion, i.EventoId,
                    e.Titulo AS EventoTitulo,
                    (SELECT ep.ArticuloCodigo FROM EventoPrecios ep
                     WHERE ep.EventoId = i.EventoId AND ep.TipoAlumnoId = i.TipoAlumnoId AND ep.Activo = 1 LIMIT 1) AS CodArticu

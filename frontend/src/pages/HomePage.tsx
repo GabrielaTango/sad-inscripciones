@@ -1,8 +1,52 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GraduationCap, BookOpen, Users, Calendar, MapPin, Laptop, ArrowRight, UserPlus } from 'lucide-react'
+import { GraduationCap, BookOpen, Users, Calendar, MapPin, Laptop, ArrowRight, UserPlus, CalendarX } from 'lucide-react'
 import Hero from '../components/Hero/Hero'
+import { eventosService } from '../services/eventosService'
+import { tiposEventoService } from '../services/tiposEventoService'
+import type { Evento, TipoEvento } from '../types/models'
+
+const badgeColor = (tipo: string) => {
+  const map: Record<string, string> = {
+    Congreso: 'bg-red-100 text-red-700',
+    Curso: 'bg-blue-100 text-blue-700',
+    Taller: 'bg-green-100 text-green-700',
+    Jornada: 'bg-amber-100 text-amber-700',
+    Webinar: 'bg-cyan-100 text-cyan-700',
+  }
+  return map[tipo] || 'bg-blue-600 text-white'
+}
 
 const HomePage = () => {
+  const [proximos, setProximos] = useState<Evento[]>([])
+  const [tiposEvento, setTiposEvento] = useState<TipoEvento[]>([])
+  const [loadingEventos, setLoadingEventos] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [evs, tipos] = await Promise.all([
+          eventosService.getActivos(),
+          tiposEventoService.getAll().catch(() => [] as TipoEvento[]),
+        ])
+        const hoy = new Date()
+        const futuros = evs
+          .filter(e => new Date(e.fechaInicio) >= hoy)
+          .sort((a, b) => new Date(a.fechaInicio).getTime() - new Date(b.fechaInicio).getTime())
+          .slice(0, 3)
+        setProximos(futuros)
+        setTiposEvento(tipos)
+      } catch {
+        setProximos([])
+      } finally {
+        setLoadingEventos(false)
+      }
+    }
+    load()
+  }, [])
+
+  const tipoNombre = (tipoId: number) => tiposEvento.find(t => t.id === tipoId)?.nombre || 'Evento'
+
   return (
     <>
       <Hero />
@@ -75,58 +119,45 @@ const HomePage = () => {
             <h2 className="section-title">Próximos Eventos</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 h-full">
-              <div className="p-6">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white mb-2">Congreso</span>
-                <h5 className="text-lg font-bold text-slate-800">Congreso Anual SAD 2026</h5>
-                <p className="text-slate-600 text-sm">
-                  <Calendar className="w-4 h-4 inline-block mr-1" /> 15-17 de Mayo, 2026
-                </p>
-                <p className="text-slate-600 text-sm">
-                  <MapPin className="w-4 h-4 inline-block mr-1" /> Buenos Aires, Argentina
-                </p>
-                <p className="text-slate-600">
-                  Encuentro de especialistas con las últimas novedades en
-                  tratamiento y tecnología aplicada a la diabetes.
-                </p>
-              </div>
+          {loadingEventos ? (
+            <div className="text-center py-8">
+              <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
             </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 h-full">
-              <div className="p-6">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white mb-2">Curso</span>
-                <h5 className="text-lg font-bold text-slate-800">Curso de Insulinoterapia</h5>
-                <p className="text-slate-600 text-sm">
-                  <Calendar className="w-4 h-4 inline-block mr-1" /> 10 de Marzo, 2026
-                </p>
-                <p className="text-slate-600 text-sm">
-                  <Laptop className="w-4 h-4 inline-block mr-1" /> Virtual
-                </p>
-                <p className="text-slate-600">
-                  Actualización en esquemas de insulinoterapia para médicos
-                  clínicos y endocrinólogos.
-                </p>
-              </div>
+          ) : proximos.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <CalendarX className="mx-auto" size={48} />
+              <p className="mt-3">No hay próximos eventos por el momento.</p>
             </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 h-full">
-              <div className="p-6">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white mb-2">Taller</span>
-                <h5 className="text-lg font-bold text-slate-800">Taller de Pie Diabético</h5>
-                <p className="text-slate-600 text-sm">
-                  <Calendar className="w-4 h-4 inline-block mr-1" /> 22 de Abril, 2026
-                </p>
-                <p className="text-slate-600 text-sm">
-                  <MapPin className="w-4 h-4 inline-block mr-1" /> Córdoba, Argentina
-                </p>
-                <p className="text-slate-600">
-                  Taller práctico sobre prevención, diagnóstico y manejo del
-                  pie diabético.
-                </p>
-              </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {proximos.map((evento) => {
+                const tipo = tipoNombre(evento.tipoEventoId)
+                const esVirtual = evento.modalidad?.toLowerCase() === 'virtual'
+                return (
+                  <div key={evento.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 h-full">
+                    <div className="p-6">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mb-2 ${badgeColor(tipo)}`}>{tipo}</span>
+                      <h5 className="text-lg font-bold text-slate-800">{evento.titulo}</h5>
+                      <p className="text-slate-600 text-sm">
+                        <Calendar className="w-4 h-4 inline-block mr-1" />
+                        {new Date(evento.fechaInicio).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                      {(evento.lugar || esVirtual) && (
+                        <p className="text-slate-600 text-sm">
+                          {esVirtual
+                            ? <><Laptop className="w-4 h-4 inline-block mr-1" /> Virtual</>
+                            : <><MapPin className="w-4 h-4 inline-block mr-1" /> {evento.lugar}</>}
+                        </p>
+                      )}
+                      {evento.descripcion && (
+                        <p className="text-slate-600">{evento.descripcion}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          </div>
+          )}
 
           <div className="text-center mt-4">
             <Link to="/eventos" className="btn-primary px-4">
@@ -145,7 +176,7 @@ const HomePage = () => {
             Formá parte de la comunidad de profesionales que trabaja por mejorar
             la calidad de vida de las personas con diabetes.
           </p>
-          <Link to="/inscripcion" className="btn-accent btn-lg px-6">
+          <Link to="/eventos" className="btn-accent btn-lg px-6">
             <UserPlus className="w-5 h-5 inline-block mr-2" />Inscribirse ahora
           </Link>
         </div>
