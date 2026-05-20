@@ -41,7 +41,7 @@ const ContactoPage = () => {
                 </div>
                 <div>
                   <h6 className="font-bold mb-1 text-base text-slate-800">Dirección</h6>
-                  <p className="text-slate-600 text-sm mb-0">Buenos Aires, Argentina</p>
+                  <p className="text-slate-600 text-sm mb-0">Paraguay 1307 8vo 74 CABA, Buenos Aires, Argentina</p>
                 </div>
               </div>
 
@@ -51,7 +51,7 @@ const ContactoPage = () => {
                 </div>
                 <div>
                   <h6 className="font-bold mb-1 text-base text-slate-800">Email</h6>
-                  <p className="text-slate-600 text-sm mb-0">info@sad.org.ar</p>
+                  <p className="text-slate-600 text-sm mb-0">sad@diabetes.org.ar</p>
                 </div>
               </div>
 
@@ -61,7 +61,7 @@ const ContactoPage = () => {
                 </div>
                 <div>
                   <h6 className="font-bold mb-1 text-base text-slate-800">Teléfono</h6>
-                  <p className="text-slate-600 text-sm mb-0">(011) 4567-8900</p>
+                  <p className="text-slate-600 text-sm mb-0">11 4813-4269</p>
                 </div>
               </div>
 
@@ -71,7 +71,7 @@ const ContactoPage = () => {
                 </div>
                 <div>
                   <h6 className="font-bold mb-1 text-base text-slate-800">Horario de Atención</h6>
-                  <p className="text-slate-600 text-sm mb-0">Lunes a Viernes 9:00 - 18:00</p>
+                  <p className="text-slate-600 text-sm mb-0">Lunes a Viernes 9:00 - 17:00</p>
                 </div>
               </div>
             </div>
