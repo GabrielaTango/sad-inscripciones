@@ -260,6 +260,7 @@ public class SyncController : ControllerBase
             INNER JOIN Eventos e ON e.Id = i.EventoId
             WHERE i.Estado = 'Confirmada'
               AND i.SincronizadoTango = 0
+              AND i.PrecioFinal > 0
               AND i.DeletedAt IS NULL");
         return Ok(inscripciones);
     }

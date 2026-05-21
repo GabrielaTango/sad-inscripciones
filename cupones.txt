@@ -1,0 +1,2 @@
+  Confirmar la inscripción también ejecuta GenerarCuponesParaInscripcionAsync (cupones de promoción). Si el evento tiene promociones configuradas, un inscripto con beca
+  100% recibiría sus cupones igual que cualquier otro. Me parece correcto, pero te lo marco por si querés excluirlo.

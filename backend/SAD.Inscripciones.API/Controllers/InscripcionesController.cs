@@ -120,7 +120,8 @@ public class InscripcionesController : ControllerBase
         // Si el precio final es 0 (beca 100%, etc.), no necesita pago
         if (inscripcion.PrecioFinal <= 0)
         {
-            _logger.LogInformation(">>> PrecioFinal es 0, no se genera link de pago");
+            _logger.LogInformation(">>> PrecioFinal es 0, no se genera link de pago; se confirma directamente");
+            await _service.UpdateEstadoAsync(inscripcion.Id, "Confirmada", GetCurrentUser());
             return Ok(new
             {
                 inscripcion.Id,

@@ -273,7 +273,9 @@ public class InscripcionService : IInscripcionService
 
         if (estado == "Confirmada")
         {
-            await _promocionCuponService.GenerarCuponesParaInscripcionAsync(inscripcion);
+            // Las inscripciones de precio cero no generan cupones de promoción.
+            if (inscripcion.PrecioFinal > 0)
+                await _promocionCuponService.GenerarCuponesParaInscripcionAsync(inscripcion);
             await _emailService.EnviarConfirmacionInscripcionAsync(inscripcion);
         }
         else if (estado == "Reservada")
