@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { inscripcionesService } from '../services/inscripcionesService'
 import type { InscripcionPendiente } from '../services/inscripcionesService'
@@ -8,6 +9,7 @@ import { Search, Info, Calendar, MapPin, User, CreditCard } from 'lucide-react'
 
 const MisInscripcionesPage = () => {
   const { isAuthenticated, cuit } = useAuth()
+  const [searchParams] = useSearchParams()
   const [documento, setDocumento] = useState('')
   const [eventoId, setEventoId] = useState<number | undefined>(undefined)
   const [eventosActivos, setEventosActivos] = useState<Evento[]>([])
@@ -42,6 +44,20 @@ const MisInscripcionesPage = () => {
     }
   }, [isAuthenticated, cuit, searchByDoc])
 
+  // Precarga y búsqueda automática desde query params (redirigido desde la página de inscripción)
+  useEffect(() => {
+    if (isAuthenticated) return
+    const docParam = searchParams.get('documento')
+    if (!docParam) return
+    const evParam = searchParams.get('eventoId')
+    const evId = evParam ? Number(evParam) : undefined
+    setDocumento(docParam)
+    setEventoId(evId)
+    searchByDoc(docParam.trim(), evId)
+  }, [isAuthenticated, searchParams, searchByDoc])
+
+  const vieneDeRedirect = !isAuthenticated && !!searchParams.get('documento')
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (!documento.trim()) return
@@ -54,6 +70,13 @@ const MisInscripcionesPage = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-16 md:py-24">
       <h2 className="font-bold text-slate-800 mb-4">Mis Inscripciones</h2>
+
+      {vieneDeRedirect && (
+        <div className="alert-info mb-4">
+          <Info className="inline w-4 h-4 mr-2" />
+          Ya tenés una inscripción registrada para ese evento con ese documento. Acá podés ver el estado y completar el pago si corresponde.
+        </div>
+      )}
 
       {/* Search form for non-authenticated users */}
       {!isAuthenticated && (

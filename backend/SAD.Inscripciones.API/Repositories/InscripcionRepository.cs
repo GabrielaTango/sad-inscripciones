@@ -54,6 +54,18 @@ public class InscripcionRepository : IInscripcionRepository
             new { Documento = documento, Desde = desde });
     }
 
+    public async Task<bool> ExistsActivaByEventoAndDocumentoAsync(int eventoId, string documento)
+    {
+        using var connection = _dbFactory.CreateConnection();
+        const string sql = @"
+            SELECT COUNT(*) FROM Inscripciones
+            WHERE EventoId = @EventoId
+              AND Documento = @Documento
+              AND Estado IN ('Pendiente', 'Reservada', 'Confirmada')
+              AND DeletedAt IS NULL";
+        return await connection.ExecuteScalarAsync<int>(sql, new { EventoId = eventoId, Documento = documento }) > 0;
+    }
+
     public async Task<int> CreateAsync(Inscripcion entity, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
         const string sql = @"

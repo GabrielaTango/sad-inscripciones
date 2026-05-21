@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck } from 'lucide-react'
 import { eventosService } from '../services/eventosService'
 import { eventoPreciosService } from '../services/eventoPreciosService'
@@ -16,6 +16,7 @@ const InscripcionPage = () => {
   const { eventoId } = useParams<{ eventoId: string }>()
   const id = Number(eventoId)
   const { isAuthenticated } = useAuth()
+  const navigate = useNavigate()
 
   const [evento, setEvento] = useState<Evento | null>(null)
   const [precios, setPrecios] = useState<EventoPrecio[]>([])
@@ -58,6 +59,17 @@ const InscripcionPage = () => {
         if (isAuthenticated) {
           try {
             const socioData = await authService.getSocioData()
+            // El documento del socio se autocompleta y queda readOnly: el onBlur nunca
+            // dispara, asi que validamos la inscripcion existente aca, al cargar la pagina.
+            if (socioData.documento) {
+              const yaInscripto = await inscripcionesService
+                .getPendientes(socioData.documento.trim(), id)
+                .catch(() => [])
+              if (yaInscripto.length > 0) {
+                navigate(`/mis-inscripciones?documento=${encodeURIComponent(socioData.documento.trim())}&eventoId=${id}`)
+                return
+              }
+            }
             const socioTipo = tipos.find(t => t.nombre.toLowerCase() === 'socio')
             const socioFiltroPrice = socioTipo ? prec.find(p => p.tipoAlumnoId === socioTipo.id && p.activo) : null
 
@@ -86,7 +98,7 @@ const InscripcionPage = () => {
       finally { setLoading(false) }
     }
     load()
-  }, [id, isAuthenticated])
+  }, [id, isAuthenticated, navigate])
 
   const selectedPrecio = precios.find(p => p.tipoAlumnoId === form.tipoAlumnoId && p.activo)
   const tipoAlumnoNombre = (taId: number) => tiposAlumno.find(t => t.id === taId)?.nombre || ''
@@ -108,9 +120,27 @@ const InscripcionPage = () => {
     }
   }
 
+  // Si el documento ya tiene una inscripcion (Pendiente/Reservada/Confirmada) para este
+  // evento, redirige a "Mis Inscripciones" filtrado por ese documento. Devuelve true si redirige.
+  const redirigirSiYaInscripto = async (doc: string): Promise<boolean> => {
+    const documento = doc.trim()
+    if (!documento) return false
+    try {
+      const existentes = await inscripcionesService.getPendientes(documento, id)
+      if (existentes.length > 0) {
+        navigate(`/mis-inscripciones?documento=${encodeURIComponent(documento)}&eventoId=${id}`)
+        return true
+      }
+    } catch {
+      // Si la consulta falla, no bloqueamos la inscripcion
+    }
+    return false
+  }
+
   const handleDocumentoBlur = async () => {
     if (isAuthenticated || !form.documento.trim()) return
     const doc = form.documento.trim()
+    if (await redirigirSiYaInscripto(doc)) return
     try {
       const socioData = await authService.getSocioDataByCuit(doc)
       setEsSocio(true)
@@ -161,7 +191,13 @@ const InscripcionPage = () => {
         setSinCosto(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al procesar la inscripcion.')
+      const msg = err instanceof Error ? err.message : 'Error al procesar la inscripcion.'
+      // Red de seguridad: si el backend rechaza por inscripcion duplicada, redirigimos
+      if (msg.includes('Ya existe una inscripción para este evento')) {
+        navigate(`/mis-inscripciones?documento=${encodeURIComponent(form.documento.trim())}&eventoId=${id}`)
+        return
+      }
+      setError(msg)
     } finally { setSubmitting(false) }
   }
 

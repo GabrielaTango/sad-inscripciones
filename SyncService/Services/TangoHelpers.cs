@@ -63,7 +63,13 @@ internal static class TangoHelpers
     {
         var cta = await conn.QueryFirstOrDefaultAsync<decimal?>(
             $@"SELECT CAST(t2.CAMPOS_ADICIONALES.value('(/CAMPOS_ADICIONALES/{campo})[1]', 'varchar(10)') AS DECIMAL)
-               FROM GVA14 t1 INNER JOIN GVA23 t2 ON t1.COD_VENDED = t2.COD_VENDED
+               FROM GVA14 t1 
+               INNER JOIN GVA23 t2 
+                ON t2.COD_VENDED = CASE 
+                           WHEN ISNULL(t1.COD_VENDED, '') = '' 
+                                THEN '09'
+                           ELSE t1.COD_VENDED
+                       END
                WHERE t1.COD_CLIENT = @CodClient AND t1.COD_VENDED <> '90'",
             new { CodClient = codClient }, tx);
         return cta ?? 0;

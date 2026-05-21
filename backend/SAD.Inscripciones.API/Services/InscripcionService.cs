@@ -71,6 +71,10 @@ public class InscripcionService : IInscripcionService
         if (DateTime.UtcNow > evento.FechaCierreInscripcion)
             throw new BusinessException("El período de inscripción ha cerrado.");
 
+        if (!string.IsNullOrWhiteSpace(dto.Documento) &&
+            await _repository.ExistsActivaByEventoAndDocumentoAsync(dto.EventoId, dto.Documento.Trim()))
+            throw new BusinessException("Ya existe una inscripción para este evento con ese número de documento. Consultá tus inscripciones para completar el pago.");
+
         if (await _tipoAlumnoRepository.GetByIdAsync(dto.TipoAlumnoId) == null)
             throw new BusinessException($"TipoAlumno con Id {dto.TipoAlumnoId} no existe.");
 
