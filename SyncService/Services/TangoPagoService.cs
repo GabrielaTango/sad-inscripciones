@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 using SyncService.Models;
+using static System.Runtime.Intrinsics.X86.Avx10v1;
 
 namespace SyncService.Services;
 
@@ -65,6 +66,9 @@ public class TangoPagoService
             gva12Rec.Set("LEYENDA_1", "RECINSCRIP");
             gva12Rec.Set("LEYENDA_2", inscId);
             await conn.ExecuteAsync(gva12Rec.Insert(), transaction: tx);
+            // 4. Actualizar saldo del cliente (debe del cliente por el pedido emitido)
+            await conn.ExecuteAsync(gva12Rec.UpdateSaldoCliente(), transaction: tx);
+
 
             // 4. Crear comprobante de tesorería (SBA04)
             // FILLER lleva el inscripcion id para trazabilidad (coincide con factura/pedido);

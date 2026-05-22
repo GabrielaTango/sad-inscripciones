@@ -29,9 +29,9 @@ public class TangoResumenCuentaService
     // Cuenta debe por medio de pago. La haber sale del vendedor del cliente
     // (CA_1118_CTA_CUOTAS para CC, CA_1118_CTA_OTRA para eventos).
     private decimal CuentaDebeMercadoPago => _config.GetValue("InscripcionSync:CuentaDebeMercadoPago", 125M);
-    private decimal CuentaDebePagoFacil => _config.GetValue("InscripcionSync:CuentaDebePagoFacil", 92M);
+    private decimal CuentaDebePagoFacil => _config.GetValue("InscripcionSync:CuentaDebePagoFacil", 49M);
     // Solo se usa como fallback en cobros presenciales sin CtaTesoreria (caso raro).
-    private decimal CuentaHaberPresencialFallback => _config.GetValue("InscripcionSync:CuentaHaber", 92M);
+    private decimal CuentaHaberPresencialFallback => _config.GetValue("InscripcionSync:CuentaHaber", 18M);
     private int IdSBA02 => _config.GetValue("InscripcionSync:IdSBA02", 7);
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
 
@@ -95,6 +95,7 @@ public class TangoResumenCuentaService
             if (esPresencial)
             {
                 cuentaHaberFinal = cuentaCuotas == 0 ? CuentaHaberPresencialFallback : cuentaCuotas;
+                cuentaDebeFinal = CuentaDebeMercadoPago;
                 cuentaDebeFinal = (decimal)pago.CtaTesoreria!.Value;
             }
             else if (esPagoFacil)
@@ -127,6 +128,9 @@ public class TangoResumenCuentaService
             gva12Rec.Set("LEYENDA_1", "RECCC");
             gva12Rec.Set("LEYENDA_2", Truncar(extRef, 40));
             await conn.ExecuteAsync(gva12Rec.Insert(), transaction: tx);
+
+            // 4. Actualizar saldo del cliente (debe del cliente por el pedido emitido)
+            await conn.ExecuteAsync(gva12Rec.UpdateSaldoCliente(), transaction: tx);
 
             // SBA04
             var nInterno = await TangoHelpers.TraerProximoNInternoAsync(conn, tx);

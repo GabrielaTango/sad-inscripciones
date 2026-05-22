@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck } from 'lucide-react'
 import { eventosService } from '../services/eventosService'
@@ -11,6 +11,37 @@ import { provinciasService } from '../services/provinciasService'
 import { authService } from '../services/authService'
 import { useAuth } from '../context/AuthContext'
 import type { Evento, EventoPrecio, TipoAlumno, InscripcionForm, Provincia } from '../types/models'
+
+// Clasifica un TipoAlumno segun su nombre. El prefijo "NO" es el diferenciador:
+// "NO SOCIO" / "NO SOCIO EXTRANJERO" -> no-socio ; "SOCIO" / "SOCIO EXTRANJERO" -> socio.
+// Categorias sin la palabra "socio" se tratan como no-socio (visibles sin validar DNI).
+const claseTipoAlumno = (nombre: string): 'socio' | 'no-socio' => {
+  const n = nombre.trim().toUpperCase().replace(/\s+/g, ' ')
+  if (/\bNO\s+SOCIO\b/.test(n)) return 'no-socio'
+  if (/\bSOCIO\b/.test(n)) return 'socio'
+  return 'no-socio'
+}
+
+// Precios activos cuya categoria pertenece al bucket "socio".
+const preciosBucketSocio = (precios: EventoPrecio[], tipos: TipoAlumno[]) =>
+  precios.filter(p => {
+    if (!p.activo) return false
+    const t = tipos.find(x => x.id === p.tipoAlumnoId)
+    return !!t && claseTipoAlumno(t.nombre) === 'socio'
+  })
+
+// Categoria a preseleccionar de una lista (un unico bucket): la unica opcion si hay una;
+// si hay varias, la de nombre "SOCIO" / "NO SOCIO" exacto; si no, 0 (sin preseleccion).
+const categoriaPorDefecto = (lista: EventoPrecio[], tipos: TipoAlumno[]): number => {
+  if (lista.length === 0) return 0
+  if (lista.length === 1) return lista[0].tipoAlumnoId
+  const exacta = lista.find(p => {
+    const t = tipos.find(x => x.id === p.tipoAlumnoId)
+    const n = t?.nombre.trim().toUpperCase().replace(/\s+/g, ' ')
+    return n === 'SOCIO' || n === 'NO SOCIO'
+  })
+  return exacta ? exacta.tipoAlumnoId : 0
+}
 
 const InscripcionPage = () => {
   const { eventoId } = useParams<{ eventoId: string }>()
@@ -33,7 +64,6 @@ const InscripcionPage = () => {
   // Socio detectado
   const [esSocio, setEsSocio] = useState(false)
   const [socioDataCargada, setSocioDataCargada] = useState(false)
-  const [documentoValidado, setDocumentoValidado] = useState(false)
 
   // Estado post-inscripcion
   const [sinCosto, setSinCosto] = useState(false)
@@ -70,9 +100,6 @@ const InscripcionPage = () => {
                 return
               }
             }
-            const socioTipo = tipos.find(t => t.nombre.toLowerCase() === 'socio')
-            const socioFiltroPrice = socioTipo ? prec.find(p => p.tipoAlumnoId === socioTipo.id && p.activo) : null
-
             setEsSocio(true)
             setSocioDataCargada(true)
             setForm(prev => ({
@@ -83,7 +110,6 @@ const InscripcionPage = () => {
               domicilio: socioData.domicilio || prev.domicilio,
               codigoPostal: socioData.codigoPostal || prev.codigoPostal,
               provincia: socioData.provincia || prev.provincia,
-              ...(socioFiltroPrice ? { tipoAlumnoId: socioFiltroPrice.tipoAlumnoId } : {}),
             }))
             if (socioData.documento) {
               promocionCuponesService.getDisponibles(socioData.documento)
@@ -103,13 +129,26 @@ const InscripcionPage = () => {
   const selectedPrecio = precios.find(p => p.tipoAlumnoId === form.tipoAlumnoId && p.activo)
   const tipoAlumnoNombre = (taId: number) => tiposAlumno.find(t => t.id === taId)?.nombre || ''
 
-  const socioTipoAlumno = tiposAlumno.find(t => t.nombre.toLowerCase() === 'socio')
-  const socioPrice = socioTipoAlumno ? precios.find(p => p.tipoAlumnoId === socioTipoAlumno.id && p.activo) : null
-  const preciosFiltrados = esSocio && socioPrice
-    ? precios.filter(p => p.tipoAlumnoId === socioTipoAlumno!.id && p.activo)
-    : documentoValidado && !esSocio && socioTipoAlumno
-      ? precios.filter(p => p.activo && p.tipoAlumnoId !== socioTipoAlumno.id)
-      : precios.filter(p => p.activo)
+  // Sin DNI validado como socio -> solo categorias "no socio". Validado como socio -> solo "socio".
+  // Si es socio pero el evento no tiene precios de socio, cae a los de no socio.
+  const preciosFiltrados = useMemo(() => {
+    const socio = preciosBucketSocio(precios, tiposAlumno)
+    const socioIds = new Set(socio.map(p => p.tipoAlumnoId))
+    const noSocio = precios.filter(p => p.activo && !socioIds.has(p.tipoAlumnoId))
+    if (esSocio) return socio.length > 0 ? socio : noSocio
+    return noSocio
+  }, [precios, tiposAlumno, esSocio])
+
+  // Mantiene la categoria coherente con el bucket vigente: si la eleccion actual no esta
+  // disponible (o no hay ninguna), preselecciona la categoria por defecto. Sin DNI validado
+  // como socio, el bucket es "no socio", asi que el selector arranca en una opcion no socio.
+  useEffect(() => {
+    setForm(prev => {
+      if (prev.tipoAlumnoId && preciosFiltrados.some(p => p.tipoAlumnoId === prev.tipoAlumnoId)) return prev
+      const def = categoriaPorDefecto(preciosFiltrados, tiposAlumno)
+      return prev.tipoAlumnoId === def ? prev : { ...prev, tipoAlumnoId: def }
+    })
+  }, [preciosFiltrados, tiposAlumno])
 
   const loadCuponesDisponibles = async (documento: string) => {
     try {
@@ -137,16 +176,11 @@ const InscripcionPage = () => {
     return false
   }
 
-  const handleDocumentoBlur = async () => {
-    if (isAuthenticated || !form.documento.trim()) return
-    const doc = form.documento.trim()
+  const validarDocumento = async (doc: string) => {
     if (await redirigirSiYaInscripto(doc)) return
     try {
       const socioData = await authService.getSocioDataByCuit(doc)
       setEsSocio(true)
-      setDocumentoValidado(true)
-      const socioTipo = tiposAlumno.find(t => t.nombre.toLowerCase() === 'socio')
-      const socioP = socioTipo ? precios.find(p => p.tipoAlumnoId === socioTipo.id && p.activo) : null
 
       setForm(prev => ({
         ...prev,
@@ -155,20 +189,37 @@ const InscripcionPage = () => {
         domicilio: socioData.domicilio || prev.domicilio,
         codigoPostal: socioData.codigoPostal || prev.codigoPostal,
         provincia: socioData.provincia || prev.provincia,
-        ...(socioP ? { tipoAlumnoId: socioP.tipoAlumnoId } : {}),
       }))
     } catch {
+      // No es socio: si los datos venian autocompletados de un socio, limpiamos solo
+      // esos campos; lo que el usuario haya cargado a mano no se toca.
+      if (esSocio) {
+        setForm(prev => ({
+          ...prev, apellido: '', nombre: '', domicilio: '', codigoPostal: '', provincia: '',
+        }))
+      }
       setEsSocio(false)
-      setDocumentoValidado(true)
-      setForm(prev => ({
-        eventoId: id, tipoAlumnoId: 0, nombre: '', apellido: '',
-        email: '', telefono: '', documento: prev.documento, provincia: '', codigoBeca: '', codigoCupon: '',
-        fechaNacimiento: '', domicilio: '', codigoPostal: '', localidad: '',
-        pais: '', celular: '', profesion: '', especialidad: '', institucion: '', sector: '',
-      }))
     }
     await loadCuponesDisponibles(doc)
   }
+
+  // Ref a la version mas reciente del validador: el debounce la usa sin reiniciar el
+  // timer en cada render.
+  const validarDocumentoRef = useRef(validarDocumento)
+  useEffect(() => { validarDocumentoRef.current = validarDocumento })
+
+  // Valida el documento ~600 ms despues de que la persona deja de tipear (no al perder foco).
+  const ultimoDocValidado = useRef('')
+  useEffect(() => {
+    if (isAuthenticated) return
+    const doc = form.documento.trim()
+    if (!doc || doc === ultimoDocValidado.current) return
+    const timer = setTimeout(() => {
+      ultimoDocValidado.current = doc
+      validarDocumentoRef.current(doc)
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [form.documento, isAuthenticated])
 
   const handleValidarBeca = async () => {
     if (!form.codigoBeca) return
@@ -257,7 +308,7 @@ const InscripcionPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-4">
                         <label className="form-label">Documento *</label>
-                        <input type="text" className="form-input" value={form.documento} onChange={(e) => setForm({ ...form, documento: e.target.value })} onBlur={handleDocumentoBlur} required readOnly={socioDataCargada} />
+                        <input type="text" className="form-input" value={form.documento} onChange={(e) => setForm({ ...form, documento: e.target.value })} required readOnly={socioDataCargada} />
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Apellido *</label>

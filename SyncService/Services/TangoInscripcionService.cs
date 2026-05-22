@@ -81,12 +81,6 @@ public class TangoInscripcionService
             // Actualizar próximo nro pedido
             await conn.ExecuteAsync(TangoHelpers.BuildUpdateProximo(nroPedido, TalonarioPedido), transaction: tx);
 
-            // 4. Actualizar saldo del cliente (debe del cliente por el pedido emitido)
-            var gva12 = new TangoGVA12();
-            gva12.Set("COD_CLIENT", codClient);
-            gva12.SetDecimal("IMPORTE", insc.PrecioFinal);
-            await conn.ExecuteAsync(gva12.UpdateSaldoCliente(), transaction: tx);
-
             tx.Commit();
             _logger.LogInformation("Inscripción {Id} procesada OK: cliente={CodClient}, pedido={NroPedido}", insc.Id, codClient, nroPedido);
             return true;

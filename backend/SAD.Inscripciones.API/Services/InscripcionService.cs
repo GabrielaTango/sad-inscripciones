@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
+using Dapper;
 using SAD.Inscripciones.API.Data;
 using SAD.Inscripciones.API.DTOs;
 using SAD.Inscripciones.API.Exceptions;
@@ -75,8 +77,23 @@ public class InscripcionService : IInscripcionService
             await _repository.ExistsActivaByEventoAndDocumentoAsync(dto.EventoId, dto.Documento.Trim()))
             throw new BusinessException("Ya existe una inscripción para este evento con ese número de documento. Consultá tus inscripciones para completar el pago.");
 
-        if (await _tipoAlumnoRepository.GetByIdAsync(dto.TipoAlumnoId) == null)
-            throw new BusinessException($"TipoAlumno con Id {dto.TipoAlumnoId} no existe.");
+        var tipoAlumno = await _tipoAlumnoRepository.GetByIdAsync(dto.TipoAlumnoId)
+            ?? throw new BusinessException($"TipoAlumno con Id {dto.TipoAlumnoId} no existe.");
+
+        // Las categorías de socio (ej. "SOCIO", "SOCIO EXTRANJERO") solo se permiten si el
+        // documento corresponde a un socio real: debe existir en Clientes (espejo de Tango GVA14).
+        if (EsCategoriaSocio(tipoAlumno.Nombre))
+        {
+            if (string.IsNullOrWhiteSpace(dto.Documento))
+                throw new BusinessException("Las categorías de socio requieren un número de documento.");
+
+            using var clientesConn = _dbFactory.CreateConnection();
+            var esSocioReal = await clientesConn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM Clientes WHERE Cuit = @Cuit",
+                new { Cuit = dto.Documento.Trim() });
+            if (esSocioReal == 0)
+                throw new BusinessException("El documento ingresado no corresponde a un socio. Seleccioná una categoría de no socio.");
+        }
 
         if (evento.MaxInscriptos.HasValue)
         {
@@ -259,6 +276,15 @@ public class InscripcionService : IInscripcionService
             transaction.Rollback();
             throw;
         }
+    }
+
+    // Clasifica una categoría por su nombre. El prefijo "NO" es el diferenciador:
+    // "NO SOCIO" / "NO SOCIO EXTRANJERO" => false ; "SOCIO" / "SOCIO EXTRANJERO" => true.
+    private static bool EsCategoriaSocio(string nombre)
+    {
+        var n = Regex.Replace((nombre ?? string.Empty).Trim().ToUpperInvariant(), @"\s+", " ");
+        if (Regex.IsMatch(n, @"\bNO\s+SOCIO\b")) return false;
+        return Regex.IsMatch(n, @"\bSOCIO\b");
     }
 
     public async Task UpdateEstadoAsync(int id, string estado, string updatedBy)
