@@ -51,6 +51,7 @@ builder.Services.AddSingleton<IMercadoPagoService, MercadoPagoService>();
 builder.Services.AddScoped<IInscripcionPagoValidationService, InscripcionPagoValidationService>();
 builder.Services.AddSingleton<ICryptoService, CryptoService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
+builder.Services.AddScoped<IDebitoAutomaticoService, DebitoAutomaticoService>();
 
 // CORS
 builder.Services.AddCors(options =>

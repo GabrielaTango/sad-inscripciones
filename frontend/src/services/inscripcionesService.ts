@@ -63,9 +63,12 @@ export const inscripcionesService = {
   countPendientes: () => api.get<{ count: number }>(`${BASE}/pendientes/count`),
   validarPendientes: () => api.post<ValidarInscripcionesResult>(`${BASE}/validar-pendientes`, {}),
   verificarMP: (id: number) => api.post<ValidacionInscripcion>(`${BASE}/${id}/verificar-mp`, {}),
-  exportExcel: async (eventoId?: number) => {
+  exportExcel: async (eventoId?: number, estado?: string) => {
     const token = localStorage.getItem('sad_token')
-    const qs = eventoId ? `?eventoId=${eventoId}` : ''
+    const params = new URLSearchParams()
+    if (eventoId) params.append('eventoId', String(eventoId))
+    if (estado) params.append('estado', estado)
+    const qs = params.toString() ? `?${params}` : ''
     const response = await fetch(`/api${BASE}/export${qs}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })

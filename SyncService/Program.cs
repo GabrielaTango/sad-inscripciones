@@ -33,6 +33,7 @@ builder.Services.AddSingleton<TangoInscripcionService>();
 builder.Services.AddSingleton<TangoPagoService>();
 builder.Services.AddSingleton<TangoImputacionService>();
 builder.Services.AddSingleton<TangoResumenCuentaService>();
+builder.Services.AddSingleton<TangoDebitoAutomaticoService>();
 builder.Services.AddSingleton<ChangeTrackingService>();
 builder.Services.AddHostedService<Worker>();
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck } from 'lucide-react'
+import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck, CalendarOff } from 'lucide-react'
 import { eventosService } from '../services/eventosService'
 import { eventoPreciosService } from '../services/eventoPreciosService'
 import { tiposAlumnoService } from '../services/tiposAlumnoService'
@@ -254,6 +254,40 @@ const InscripcionPage = () => {
 
   if (loading) return <div className="text-center py-16"><div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>
   if (!evento) return <div className="text-center py-16"><p className="text-slate-600">Evento no encontrado.</p><Link to="/eventos" className="btn-primary">Ver Eventos</Link></div>
+
+  // Vista: evento desactivado o con inscripcion cerrada
+  const fechaCierre = new Date(evento.fechaCierreInscripcion)
+  fechaCierre.setHours(23, 59, 59, 999)
+  const cerradoPorFecha = fechaCierre < new Date()
+  const eventoNoDisponible = !evento.activo || cerradoPorFecha
+  if (eventoNoDisponible) {
+    return (
+      <>
+        <section className="page-header">
+          <div className="max-w-7xl mx-auto px-4">
+            <h1 className="font-bold">Inscripcion</h1>
+            <p className="text-lg text-white/90 mb-0">{evento.titulo}</p>
+          </div>
+        </section>
+        <section className="py-16">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex justify-center">
+              <div className="max-w-2xl text-center py-12">
+                <CalendarOff className="text-slate-400 mx-auto" style={{ width: '5rem', height: '5rem' }} />
+                <h3 className="font-bold mt-3 text-slate-800">Evento no disponible</h3>
+                <p className="text-slate-600">
+                  {!evento.activo
+                    ? 'Este evento se encuentra inactivo y no acepta inscripciones.'
+                    : `La fecha de cierre de inscripción fue el ${fechaCierre.toLocaleDateString('es-AR')}.`}
+                </p>
+                <Link to="/eventos" className="btn-primary mt-4 inline-block">Ver otros eventos</Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
+    )
+  }
 
   // Vista: inscripcion sin costo
   if (sinCosto) {

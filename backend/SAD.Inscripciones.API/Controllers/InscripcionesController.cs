@@ -49,11 +49,12 @@ public class InscripcionesController : ControllerBase
 
     [HttpGet("export")]
     [Authorize(Policy = "Admin")]
-    public async Task<IActionResult> Export([FromQuery] int? eventoId)
+    public async Task<IActionResult> Export([FromQuery] int? eventoId, [FromQuery] string? estado)
     {
-        var bytes = await _service.ExportToExcelAsync(eventoId);
-        var sufijo = eventoId.HasValue ? $"_evento_{eventoId.Value}" : "";
-        var nombre = $"inscripciones{sufijo}_{DateTime.Now:yyyy-MM-dd}.xlsx";
+        var bytes = await _service.ExportToExcelAsync(eventoId, estado);
+        var sufijoEvento = eventoId.HasValue ? $"_evento_{eventoId.Value}" : "";
+        var sufijoEstado = !string.IsNullOrWhiteSpace(estado) ? $"_{estado.ToLowerInvariant()}" : "";
+        var nombre = $"inscripciones{sufijoEvento}{sufijoEstado}_{DateTime.Now:yyyy-MM-dd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
     }
 

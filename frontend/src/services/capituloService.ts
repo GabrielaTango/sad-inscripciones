@@ -1,4 +1,5 @@
 import { api } from './api'
+import type { DebitoAutomaticoInfo, DebitoAutomaticoFormData } from '../components/DebitoAutomaticoForm'
 
 export interface Vendedor {
   codVended: string
@@ -61,4 +62,10 @@ export const capituloService = {
   getResumen: (cuit: string) => api.get<ResumenItem[]>(`/capitulo/socios/${encodeURIComponent(cuit)}/resumen`),
   registrarCobro: (payload: RegistrarCobroPayload) => api.post<RegistrarCobroResult>('/capitulo/cobros', payload),
   listarCobros: () => api.get<CobroCapitulo[]>('/capitulo/cobros'),
+  getDebitoAutomatico: (cuit: string) =>
+    api.get<DebitoAutomaticoInfo>(`/capitulo/socios/${encodeURIComponent(cuit)}/debito-automatico`),
+  guardarDebitoAutomatico: (cuit: string, data: DebitoAutomaticoFormData) =>
+    api.post<DebitoAutomaticoInfo>(`/capitulo/socios/${encodeURIComponent(cuit)}/debito-automatico`, data),
+  darDeBajaDebitoAutomatico: (cuit: string) =>
+    api.delete<DebitoAutomaticoInfo>(`/capitulo/socios/${encodeURIComponent(cuit)}/debito-automatico`),
 }

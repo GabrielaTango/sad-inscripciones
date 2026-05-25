@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.Data;
+using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
 
@@ -11,11 +12,13 @@ namespace SAD.Inscripciones.API.Controllers;
 public class SyncController : ControllerBase
 {
     private readonly DbConnectionFactory _dbFactory;
+    private readonly ICryptoService _crypto;
     private readonly string _apiKey;
 
-    public SyncController(DbConnectionFactory dbFactory, IConfiguration configuration)
+    public SyncController(DbConnectionFactory dbFactory, ICryptoService crypto, IConfiguration configuration)
     {
         _dbFactory = dbFactory;
+        _crypto = crypto;
         _apiKey = configuration["SyncSettings:ApiKey"] ?? "";
     }
 
@@ -67,7 +70,12 @@ public class SyncController : ControllerBase
     {
         if (!ValidateApiKey()) return Unauthorized();
         using var conn = _dbFactory.CreateConnection();
-        await conn.ExecuteAsync(SqlClientes, dto);
+        await conn.ExecuteAsync(SqlClientes, new
+        {
+            dto.Cuit, dto.RazonSoci, dto.Domicilio, dto.CodPostal,
+            dto.CodProvin, dto.CodVended, dto.CodClient,
+            DebitoAutomaticoActivo = ParseDebito(dto.DebitoAutomaticoTango),
+        });
         return Ok();
     }
 
@@ -77,22 +85,43 @@ public class SyncController : ControllerBase
         if (!ValidateApiKey()) return Unauthorized();
         if (items == null || items.Length == 0) return Ok(new { count = 0 });
 
+        // Bulk upsert con manejo especial de DebitoAutomatico: lo escribimos en una
+        // columna staging y luego un UPDATE separado lo aplica sólo cuando el cliente
+        // está Sincronizado (mismo criterio que el upsert single).
         var (sql, parameters) = BuildBulkUpsert(
             "Clientes",
-            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient" },
+            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient", "DebitoAutomatico" },
             new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient" },
             items,
-            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended, c.CodClient });
+            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended, c.CodClient, ParseDebito(c.DebitoAutomaticoTango) });
 
         using var conn = _dbFactory.CreateConnection();
         await conn.ExecuteAsync(sql, parameters);
+
+        // Aplicar DebitoAutomatico sólo a los Sincronizados (evita pisar cambios pendientes
+        // hechos desde el frontend que aún no llegaron a Tango).
+        var pares = items
+            .Where(i => !string.IsNullOrEmpty(i.Cuit))
+            .Select(i => new { i.Cuit, Activo = ParseDebito(i.DebitoAutomaticoTango) })
+            .ToList();
+        await conn.ExecuteAsync(@"
+            UPDATE Clientes
+            SET DebitoAutomatico = @Activo
+            WHERE Cuit = @Cuit AND EstadoSyncDebito = 'Sincronizado'",
+            pares);
+
         return Ok(new { count = items.Length });
     }
 
+    private static bool ParseDebito(string? raw) =>
+        !string.IsNullOrWhiteSpace(raw) && raw.Trim().Equals("S", StringComparison.OrdinalIgnoreCase);
+
     private const string SqlClientes = @"
-        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended, CodClient)
-        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended, @CodClient)
-        ON DUPLICATE KEY UPDATE RazonSoci=@RazonSoci, Domicilio=@Domicilio, CodPostal=@CodPostal, CodProvin=@CodProvin, CodVended=@CodVended, CodClient=@CodClient";
+        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended, CodClient, DebitoAutomatico)
+        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended, @CodClient, @DebitoAutomaticoActivo)
+        ON DUPLICATE KEY UPDATE
+            RazonSoci=@RazonSoci, Domicilio=@Domicilio, CodPostal=@CodPostal, CodProvin=@CodProvin, CodVended=@CodVended, CodClient=@CodClient,
+            DebitoAutomatico = CASE WHEN EstadoSyncDebito = 'Sincronizado' THEN @DebitoAutomaticoActivo ELSE DebitoAutomatico END";
 
     [HttpDelete("clientes/{cuit}")]
     public async Task<IActionResult> DeleteCliente(string cuit)
@@ -338,6 +367,65 @@ public class SyncController : ControllerBase
         return Ok();
     }
 
+    // --- DEBITO AUTOMATICO (push a Tango) ---
+
+    [HttpGet("debitos-automaticos")]
+    public async Task<IActionResult> GetDebitosPendientesTango()
+    {
+        if (!ValidateApiKey()) return Unauthorized();
+        using var conn = _dbFactory.CreateConnection();
+        var rows = await conn.QueryAsync<SyncDebitoRow>(@"
+            SELECT Cuit, EstadoSyncDebito AS EstadoSync, MarcaTarjeta,
+                   NumeroTarjetaCifrado, VencimientoTarjeta AS Vencimiento
+            FROM Clientes
+            WHERE EstadoSyncDebito <> 'Sincronizado'");
+
+        var list = rows.Select(r => new SyncDebitoDto
+        {
+            Cuit = r.Cuit,
+            EstadoSync = r.EstadoSync,
+            MarcaTarjeta = r.MarcaTarjeta,
+            NumeroTarjeta = string.IsNullOrEmpty(r.NumeroTarjetaCifrado) ? null : _crypto.Decrypt(r.NumeroTarjetaCifrado),
+            Vencimiento = r.Vencimiento,
+        });
+        return Ok(list);
+    }
+
+    [HttpPatch("debitos-automaticos/{cuit}/tango")]
+    public async Task<IActionResult> MarcarDebitoSincronizado(string cuit)
+    {
+        if (!ValidateApiKey()) return Unauthorized();
+        using var conn = _dbFactory.CreateConnection();
+
+        var estado = await conn.ExecuteScalarAsync<string?>(
+            "SELECT EstadoSyncDebito FROM Clientes WHERE Cuit = @Cuit",
+            new { Cuit = cuit });
+        if (estado == null) return NotFound();
+
+        if (estado == "PendienteBaja")
+        {
+            // Baja confirmada en Tango: limpiamos todo del lado MySQL.
+            await conn.ExecuteAsync(@"
+                UPDATE Clientes
+                SET DebitoAutomatico = 0,
+                    MarcaTarjeta = NULL,
+                    NumeroTarjetaCifrado = NULL,
+                    TarjetaUltimos4 = NULL,
+                    VencimientoTarjeta = NULL,
+                    FechaAltaDebito = NULL,
+                    EstadoSyncDebito = 'Sincronizado'
+                WHERE Cuit = @Cuit",
+                new { Cuit = cuit });
+        }
+        else
+        {
+            await conn.ExecuteAsync(
+                "UPDATE Clientes SET EstadoSyncDebito = 'Sincronizado' WHERE Cuit = @Cuit",
+                new { Cuit = cuit });
+        }
+        return Ok();
+    }
+
     // --- TRIGGER MANUAL DE FULL SYNC ---
 
     [HttpPost("trigger")]
@@ -425,6 +513,7 @@ public class SyncClienteDto
     public string? CodProvin { get; set; }
     public string? CodVended { get; set; }
     public string? CodClient { get; set; }
+    public string? DebitoAutomaticoTango { get; set; }
 }
 
 public class SyncArticuloDto
@@ -526,4 +615,22 @@ public class SyncTriggerStatusDto
     public DateTime? RequestedAt { get; set; }
     public string? RequestedBy { get; set; }
     public DateTime? ConsumedAt { get; set; }
+}
+
+public class SyncDebitoDto
+{
+    public string Cuit { get; set; } = string.Empty;
+    public string EstadoSync { get; set; } = string.Empty;
+    public string? MarcaTarjeta { get; set; }
+    public string? NumeroTarjeta { get; set; }
+    public string? Vencimiento { get; set; }
+}
+
+internal class SyncDebitoRow
+{
+    public string Cuit { get; set; } = string.Empty;
+    public string EstadoSync { get; set; } = string.Empty;
+    public string? MarcaTarjeta { get; set; }
+    public string? NumeroTarjetaCifrado { get; set; }
+    public string? Vencimiento { get; set; }
 }

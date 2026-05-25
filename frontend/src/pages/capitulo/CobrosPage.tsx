@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, CheckSquare, CreditCard, AlertTriangle, CheckCircle, Wallet, ArrowLeft, Clock } from 'lucide-react'
+import { Search, CheckSquare, CreditCard, AlertTriangle, CheckCircle, Wallet, ArrowLeft, Clock, ShieldCheck, RefreshCw } from 'lucide-react'
 import { capituloService } from '../../services/capituloService'
 import type { Vendedor, SocioCapitulo, ResumenItem, MedioPagoCapitulo } from '../../services/capituloService'
+import DebitoAutomaticoForm, {
+  type DebitoAutomaticoInfo,
+  type DebitoAutomaticoFormData,
+} from '../../components/DebitoAutomaticoForm'
 
 type Etapa = 'buscar' | 'cobrar'
 
@@ -29,6 +33,10 @@ const CobrosPage = () => {
   const registrandoRef = useRef(false)
   const [error, setError] = useState('')
   const [exito, setExito] = useState('')
+
+  const [debito, setDebito] = useState<DebitoAutomaticoInfo | null>(null)
+  const [debitoModal, setDebitoModal] = useState(false)
+  const [debitoSubmitting, setDebitoSubmitting] = useState(false)
 
   const buscar = async (term: string) => {
     setBuscando(true)
@@ -58,16 +66,49 @@ const CobrosPage = () => {
     setMedioPago('Contado')
     setExito('')
     setError('')
+    setDebito(null)
     setEtapa('cobrar')
     setCargandoResumen(true)
     try {
-      const data = await capituloService.getResumen(socio.cuit)
+      const [data, da] = await Promise.all([
+        capituloService.getResumen(socio.cuit),
+        capituloService.getDebitoAutomatico(socio.cuit).catch(() => null),
+      ])
       setResumen(data)
+      setDebito(da)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar resumen')
       setResumen([])
     } finally {
       setCargandoResumen(false)
+    }
+  }
+
+  const handleDebitoSubmit = async (data: DebitoAutomaticoFormData) => {
+    if (!socioActivo) return
+    setDebitoSubmitting(true)
+    try {
+      const info = await capituloService.guardarDebitoAutomatico(socioActivo.cuit, data)
+      setDebito(info)
+      setDebitoModal(false)
+      setExito('Solicitud enviada. Se va a sincronizar con Tango en los próximos minutos.')
+    } finally {
+      setDebitoSubmitting(false)
+    }
+  }
+
+  const handleDebitoBaja = async () => {
+    if (!socioActivo) return
+    if (!window.confirm('¿Dar de baja el débito automático de este socio?')) return
+    setDebitoSubmitting(true)
+    try {
+      const info = await capituloService.darDeBajaDebitoAutomatico(socioActivo.cuit)
+      setDebito(info)
+      setExito('Baja solicitada. Se va a sincronizar con Tango en los próximos minutos.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al dar de baja el débito.')
+    } finally {
+      setDebitoSubmitting(false)
     }
   }
 
@@ -243,6 +284,73 @@ const CobrosPage = () => {
               <div className="text-sm text-slate-600 font-mono">{socioActivo.cuit}</div>
             </div>
           </div>
+
+          <div className="card rounded-2xl border-slate-200 p-4 flex flex-wrap items-center gap-3">
+            {debito?.bloqueado ? (
+              <>
+                <RefreshCw className="w-5 h-5 text-amber-600 animate-spin" />
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-800">Sincronizando con Tango...</div>
+                  <div className="text-sm text-slate-600">
+                    Hay un cambio pendiente. Volvé a intentar en unos minutos.
+                  </div>
+                </div>
+              </>
+            ) : debito?.activo ? (
+              <>
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-800">Débito automático activo</div>
+                  <div className="text-sm text-slate-600">
+                    {debito.marcaTarjeta} ****{debito.tarjetaUltimos4}
+                    {debito.vencimiento ? ` · vence ${debito.vencimiento}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={debitoSubmitting}
+                  onClick={() => setDebitoModal(true)}
+                >
+                  Modificar tarjeta
+                </button>
+                <button
+                  type="button"
+                  className="btn-outline-danger btn-sm"
+                  disabled={debitoSubmitting}
+                  onClick={handleDebitoBaja}
+                >
+                  Dar de baja
+                </button>
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-5 h-5 text-blue-600" />
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-800">Sin débito automático</div>
+                  <div className="text-sm text-slate-600">
+                    Adherir al socio para cobros automáticos de sus cuotas.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary btn-sm"
+                  onClick={() => setDebitoModal(true)}
+                >
+                  Adherir débito automático
+                </button>
+              </>
+            )}
+          </div>
+
+          <DebitoAutomaticoForm
+            open={debitoModal}
+            onClose={() => setDebitoModal(false)}
+            onSubmit={handleDebitoSubmit}
+            submitting={debitoSubmitting}
+            currentInfo={debito}
+            titulo={`Débito automático · ${socioActivo.razonSoci}`}
+          />
 
           {exito && (
             <div className="alert-success flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Bookmark, X, RefreshCw, Receipt, Download } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
@@ -12,6 +12,7 @@ const InscripcionesAdminPage = () => {
   const [data, setData] = useState<Inscripcion[]>([])
   const [eventos, setEventos] = useState<Evento[]>([])
   const [eventoFilter, setEventoFilter] = useState<number | ''>('')
+  const [estadoFilter, setEstadoFilter] = useState<string>('')
   const [showConfirm, setShowConfirm] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -27,6 +28,11 @@ const InscripcionesAdminPage = () => {
   }, [eventoFilter])
 
   useEffect(() => { load() }, [load])
+
+  // Filtrado client-side por estado sobre lo que ya cargó el filtro de evento.
+  const displayData = useMemo(
+    () => estadoFilter ? data.filter(i => i.estado === estadoFilter) : data,
+    [data, estadoFilter])
 
   const eventoTitulo = (id: number) => eventos.find(e => e.id === id)?.titulo || '-'
 
@@ -61,11 +67,13 @@ const InscripcionesAdminPage = () => {
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
-    if (data.length === 0 || exporting) return
+    if (displayData.length === 0 || exporting) return
     setExporting(true)
     setError('')
     try {
-      await inscripcionesService.exportExcel(eventoFilter ? Number(eventoFilter) : undefined)
+      await inscripcionesService.exportExcel(
+        eventoFilter ? Number(eventoFilter) : undefined,
+        estadoFilter || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al exportar')
     } finally {
@@ -106,20 +114,28 @@ const InscripcionesAdminPage = () => {
           <option value="">Todos los eventos</option>
           {eventos.map(e => <option key={e.id} value={e.id}>{e.titulo}</option>)}
         </select>
+        <select className="form-select w-auto" value={estadoFilter} onChange={e => setEstadoFilter(e.target.value)}>
+          <option value="">Todos los estados</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Reservada">Reservada</option>
+          <option value="Confirmada">Confirmada</option>
+          <option value="Cancelada">Cancelada</option>
+          <option value="Rechazada">Rechazada</option>
+        </select>
         <button
           type="button"
           className="btn-accent flex items-center gap-2 disabled:opacity-60"
           onClick={handleExport}
-          disabled={data.length === 0 || exporting}
+          disabled={displayData.length === 0 || exporting}
           title="Descargar inscripciones filtradas a Excel"
         >
           <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
-          {exporting ? 'Exportando...' : `Exportar a Excel (${data.length})`}
+          {exporting ? 'Exportando...' : `Exportar a Excel (${displayData.length})`}
         </button>
       </div>
 
       <DataTable
-        data={data as unknown as Record<string, unknown>[]}
+        data={displayData as unknown as Record<string, unknown>[]}
         columns={columns as never}
         onDelete={((item: Inscripcion) => { setDeleteId(item.id); setShowConfirm(true) }) as never}
         actions={(item: unknown) => {

@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.Data;
+using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
 
@@ -12,13 +13,15 @@ namespace SAD.Inscripciones.API.Controllers;
 public class CapituloController : ControllerBase
 {
     private readonly DbConnectionFactory _dbFactory;
+    private readonly IDebitoAutomaticoService _debitoService;
     private readonly ILogger<CapituloController> _logger;
 
     private static readonly HashSet<string> MediosPagoValidos = new(StringComparer.OrdinalIgnoreCase) { "Contado", "Transferencia" };
 
-    public CapituloController(DbConnectionFactory dbFactory, ILogger<CapituloController> logger)
+    public CapituloController(DbConnectionFactory dbFactory, IDebitoAutomaticoService debitoService, ILogger<CapituloController> logger)
     {
         _dbFactory = dbFactory;
+        _debitoService = debitoService;
         _logger = logger;
     }
 
@@ -122,14 +125,14 @@ public class CapituloController : ControllerBase
         if (vendedor == null)
             return BadRequest(new { error = "Vendedor no sincronizado desde Tango" });
 
-        // Cuenta haber: depende del tipo de cobro, no del medio de pago.
-        //   - cobro de comprobantes (cuotas)  → CtaCuotas
-        //   - cobro a cuenta (sin imputación) → CtaOtra
-        var esPagoACuenta = request.Ids == null || request.Ids.Length == 0;
-        var ctaTesoreria = esPagoACuenta ? vendedor.CtaOtra : vendedor.CtaCuotas;
+        // Cuenta haber: depende del medio de pago.
+        //   - Contado        → CtaCaja
+        //   - Transferencia  → CtaTransferencia
+        var esContado = string.Equals(request.MedioPago, "Contado", StringComparison.OrdinalIgnoreCase);
+        var ctaTesoreria = esContado ? vendedor.CtaCaja : vendedor.CtaTransferencia;
         if (ctaTesoreria <= 0)
         {
-            var nombreCta = esPagoACuenta ? "CTA_OTRA" : "CTA_CUOTAS";
+            var nombreCta = esContado ? "CTA_CAJA" : "CTA_TRANSFERENCIA";
             return BadRequest(new { error = $"El vendedor no tiene configurada {nombreCta} en Tango (CAMPOS_ADICIONALES de GVA23)" });
         }
 
@@ -185,6 +188,80 @@ public class CapituloController : ControllerBase
             id, codVended, request.Cuit, request.Monto, request.MedioPago, request.Ids?.Length ?? 0);
 
         return Ok(new { id, externalReference, monto = request.Monto });
+    }
+
+    [HttpGet("socios/{cuit}/debito-automatico")]
+    public async Task<IActionResult> GetDebitoAutomatico(string cuit)
+    {
+        var codVended = GetCodVended();
+        if (string.IsNullOrEmpty(codVended)) return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+        var pertenece = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM Clientes WHERE Cuit = @Cuit AND CodVended = @CodVended",
+            new { Cuit = cuit, CodVended = codVended });
+        if (pertenece == 0) return Forbid();
+
+        var info = await _debitoService.GetByCuitAsync(cuit);
+        return Ok(info ?? new DebitoAutomaticoInfo());
+    }
+
+    [HttpPost("socios/{cuit}/debito-automatico")]
+    public async Task<IActionResult> GuardarDebitoAutomatico(string cuit, [FromBody] GuardarDebitoAutomaticoRequest request)
+    {
+        var codVended = GetCodVended();
+        if (string.IsNullOrEmpty(codVended)) return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+        var pertenece = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM Clientes WHERE Cuit = @Cuit AND CodVended = @CodVended",
+            new { Cuit = cuit, CodVended = codVended });
+        if (pertenece == 0) return Forbid();
+
+        try
+        {
+            await _debitoService.GuardarAsync(cuit, request);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        _logger.LogInformation("Débito automático actualizado por capítulo {CV} para CUIT={Cuit}", codVended, cuit);
+        return Ok(await _debitoService.GetByCuitAsync(cuit));
+    }
+
+    [HttpDelete("socios/{cuit}/debito-automatico")]
+    public async Task<IActionResult> DarDeBajaDebitoAutomatico(string cuit)
+    {
+        var codVended = GetCodVended();
+        if (string.IsNullOrEmpty(codVended)) return Unauthorized();
+
+        using var conn = _dbFactory.CreateConnection();
+        var pertenece = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM Clientes WHERE Cuit = @Cuit AND CodVended = @CodVended",
+            new { Cuit = cuit, CodVended = codVended });
+        if (pertenece == 0) return Forbid();
+
+        try
+        {
+            await _debitoService.DarDeBajaAsync(cuit);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        _logger.LogInformation("Baja débito automático por capítulo {CV} para CUIT={Cuit}", codVended, cuit);
+        return Ok(await _debitoService.GetByCuitAsync(cuit));
     }
 
     [HttpGet("cobros")]

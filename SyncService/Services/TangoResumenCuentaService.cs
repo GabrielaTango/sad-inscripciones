@@ -81,10 +81,9 @@ public class TangoResumenCuentaService
             //   Debe  = cuenta caja según medio:
             //     - PagoFacil → CuentaDebePagoFacil (92 por config).
             //     - MercadoPago (default socio) → CuentaDebeMercadoPago (125).
-            //     - Presencial (CtaTesoreria del cobrador) → snapshot del CtaTesoreria.
-            //       En este caso el haber se invierte: CtaTesoreria va al debe (caja
-            //       del cobrador) y la cuenta CUOTAS al haber. Si el snapshot está
-            //       vacío, fallback al CuentaHaber legacy.
+            //     - Presencial (cobro de capítulo) → CtaTesoreria del cobrador,
+            //       que el backend ya resolvió a CtaCaja (Contado) o CtaTransferencia
+            //       (Transferencia) según el medio elegido.
             var esPagoFacil = string.Equals(pago.MedioPago, "PagoFacil", StringComparison.OrdinalIgnoreCase);
             var esPresencial = !esPagoFacil && pago.CtaTesoreria.HasValue && pago.CtaTesoreria.Value > 0;
 
@@ -95,8 +94,7 @@ public class TangoResumenCuentaService
             if (esPresencial)
             {
                 cuentaHaberFinal = cuentaCuotas == 0 ? CuentaHaberPresencialFallback : cuentaCuotas;
-                cuentaDebeFinal = CuentaDebeMercadoPago;
-                cuentaDebeFinal = (decimal)pago.CtaTesoreria!.Value;
+                cuentaDebeFinal = pago.CtaTesoreria!.Value;
             }
             else if (esPagoFacil)
             {

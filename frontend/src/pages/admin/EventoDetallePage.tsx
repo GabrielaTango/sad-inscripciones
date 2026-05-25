@@ -186,7 +186,7 @@ const EventoDetallePage = () => {
         <div className="md:col-span-6"><label className="form-label">Precio 1 Pago *</label><input type="number" step="0.01" className="form-input" value={precioForm.precioBase} onChange={e => setPrecioForm({ ...precioForm, precioBase: Number(e.target.value) })} required /></div>
         <div className="md:col-span-4"><label className="form-label">Precio Total Cuotas</label><input type="number" step="0.01" className="form-input" value={precioForm.precioCuotas ?? ''} onChange={e => setPrecioForm({ ...precioForm, precioCuotas: e.target.value ? Number(e.target.value) : null })} /></div>
         <div className="md:col-span-2"><label className="form-label">Cant. Cuotas</label><input type="number" className="form-input" value={precioForm.cantidadCuotas} onChange={e => setPrecioForm({ ...precioForm, cantidadCuotas: Number(e.target.value) || 6 })} /></div>
-        <div className="md:col-span-6"><label className="form-label">Articulo</label>
+        <div className="md:col-span-12"><label className="form-label">Articulo</label>
           <AsyncSelect<ArticuloOption>
             value={precioArticuloSelected}
             loadOptions={loadArticuloOptions}

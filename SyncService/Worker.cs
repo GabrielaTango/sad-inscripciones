@@ -18,6 +18,7 @@ public class Worker : BackgroundService
     private readonly TangoPagoService _tangoPagoService;
     private readonly TangoImputacionService _tangoImputacionService;
     private readonly TangoResumenCuentaService _tangoResumenCuentaService;
+    private readonly TangoDebitoAutomaticoService _tangoDebitoService;
     private readonly ChangeTrackingService _ctService;
 
     public Worker(
@@ -27,6 +28,7 @@ public class Worker : BackgroundService
         TangoPagoService tangoPagoService,
         TangoImputacionService tangoImputacionService,
         TangoResumenCuentaService tangoResumenCuentaService,
+        TangoDebitoAutomaticoService tangoDebitoService,
         ChangeTrackingService ctService)
     {
         _logger = logger;
@@ -35,6 +37,7 @@ public class Worker : BackgroundService
         _tangoPagoService = tangoPagoService;
         _tangoImputacionService = tangoImputacionService;
         _tangoResumenCuentaService = tangoResumenCuentaService;
+        _tangoDebitoService = tangoDebitoService;
         _ctService = ctService;
         _http = new HttpClient();
         _http.BaseAddress = new Uri(_config["ApiSettings:BaseUrl"]!);
@@ -128,6 +131,52 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sincronizando pagos de cuenta corriente a Tango");
+        }
+
+        try
+        {
+            await SyncDebitosAutomaticosAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sincronizando débitos automáticos a Tango");
+        }
+    }
+
+    private async Task SyncDebitosAutomaticosAsync()
+    {
+        var response = await _http.GetAsync("/api/sync/debitos-automaticos");
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("GET /api/sync/debitos-automaticos returned {Status}", response.StatusCode);
+            return;
+        }
+
+        var debitos = await response.Content.ReadFromJsonAsync<List<DebitoAutomaticoSyncDto>>();
+        if (debitos == null || debitos.Count == 0) return;
+
+        _logger.LogInformation("Procesando {Count} débitos automáticos pendientes de sync a Tango", debitos.Count);
+
+        foreach (var d in debitos)
+        {
+            try
+            {
+                await using var conn = new SqlConnection(_config["SqlServerConnection"]);
+                await conn.OpenAsync();
+                var ok = await _tangoDebitoService.ProcesarAsync(conn, d);
+                if (!ok) continue;
+
+                var patch = await _http.PatchAsync(
+                    $"/api/sync/debitos-automaticos/{Uri.EscapeDataString(d.Cuit)}/tango",
+                    new StringContent("", Encoding.UTF8, "application/json"));
+
+                if (!patch.IsSuccessStatusCode)
+                    _logger.LogWarning("No se pudo marcar débito {Cuit} como sincronizado: {Status}", d.Cuit, patch.StatusCode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando débito automático {Cuit} ({Estado})", d.Cuit, d.EstadoSync);
+            }
         }
     }
 
@@ -353,11 +402,15 @@ public class Worker : BackgroundService
         switch (tabla)
         {
             case "Clientes":
-                var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>(
-                    "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended, COD_CLIENT AS CodClient FROM GVA14 WHERE CUIT = @Clave",
+                var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                    SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio,
+                           C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
+                           COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
+                           CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
+                    FROM GVA14 WHERE CUIT = @Clave",
                     new { Clave = clave });
                 if (cliente != null)
-                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim() });
+                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim(), debitoAutomaticoTango = (string?)cliente.DebitoAutomaticoTango?.ToString().Trim() });
                 break;
 
             case "Articulos":
@@ -488,8 +541,12 @@ public class Worker : BackgroundService
             await PostBatchedAsync("/api/sync/provincias-batch", provincias, "Provincias");
 
             // Clientes (batch)
-            var clientes = (await conn.QueryAsync<dynamic>(
-                "SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio, C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin, COD_VENDED AS CodVended, COD_CLIENT AS CodClient FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
+            var clientes = (await conn.QueryAsync<dynamic>(@"
+                SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio,
+                       C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
+                       COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
+                       CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
+                FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
                 .Select(c => new
                 {
                     cuit = ((string?)c.Cuit?.ToString())?.Trim(),
@@ -499,6 +556,7 @@ public class Worker : BackgroundService
                     codProvin = ((string?)c.CodProvin?.ToString())?.Trim(),
                     codVended = ((string?)c.CodVended?.ToString())?.Trim(),
                     codClient = ((string?)c.CodClient?.ToString())?.Trim(),
+                    debitoAutomaticoTango = ((string?)c.DebitoAutomaticoTango?.ToString())?.Trim(),
                 })
                 .Where(c => !string.IsNullOrEmpty(c.cuit))
                 .ToList();

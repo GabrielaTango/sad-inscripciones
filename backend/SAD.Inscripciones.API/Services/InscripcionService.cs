@@ -326,11 +326,14 @@ public class InscripcionService : IInscripcionService
         return await _repository.CountPendientesByDocumentoAsync(documento);
     }
 
-    public async Task<byte[]> ExportToExcelAsync(int? eventoId)
+    public async Task<byte[]> ExportToExcelAsync(int? eventoId, string? estado = null)
     {
         var inscripciones = (eventoId.HasValue
             ? await _repository.GetByEventoIdAsync(eventoId.Value)
             : await _repository.GetAllAsync()).ToList();
+
+        if (!string.IsNullOrWhiteSpace(estado))
+            inscripciones = inscripciones.Where(i => string.Equals(i.Estado, estado, StringComparison.OrdinalIgnoreCase)).ToList();
 
         var eventos = (await _eventoRepository.GetAllAsync()).ToDictionary(e => e.Id, e => e.Titulo);
         var tiposAlumno = (await _tipoAlumnoRepository.GetAllAsync()).ToDictionary(t => t.Id, t => t.Nombre);

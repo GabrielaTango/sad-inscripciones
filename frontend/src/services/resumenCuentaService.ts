@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { ResumenCuenta } from '../types/models'
+import type { DebitoAutomaticoInfo, DebitoAutomaticoFormData } from '../components/DebitoAutomaticoForm'
 
 export interface GenerarPagoResult {
   preferenceId: string
@@ -65,4 +66,9 @@ export const resumenCuentaService = {
     api.post<ConfirmarPagoResult>('/resumen-cuenta/confirmar-pago', { externalReference, paymentId }),
   validarPendientes: () => api.post<ValidarPendientesResult>('/resumen-cuenta/validar-pendientes', {}),
   getCount: () => api.get<{ count: number }>('/resumen-cuenta/count'),
+  getDebitoAutomatico: () => api.get<DebitoAutomaticoInfo>('/resumen-cuenta/debito-automatico'),
+  guardarDebitoAutomatico: (data: DebitoAutomaticoFormData) =>
+    api.post<DebitoAutomaticoInfo>('/resumen-cuenta/debito-automatico', data),
+  darDeBajaDebitoAutomatico: () =>
+    api.delete<DebitoAutomaticoInfo>('/resumen-cuenta/debito-automatico'),
 }

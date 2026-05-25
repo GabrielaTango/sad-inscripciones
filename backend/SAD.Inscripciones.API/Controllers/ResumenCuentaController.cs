@@ -18,12 +18,14 @@ public class ResumenCuentaController : ControllerBase
 {
     private readonly DbConnectionFactory _dbFactory;
     private readonly IMercadoPagoService _mpService;
+    private readonly IDebitoAutomaticoService _debitoService;
     private readonly ILogger<ResumenCuentaController> _logger;
 
-    public ResumenCuentaController(DbConnectionFactory dbFactory, IMercadoPagoService mpService, ILogger<ResumenCuentaController> logger)
+    public ResumenCuentaController(DbConnectionFactory dbFactory, IMercadoPagoService mpService, IDebitoAutomaticoService debitoService, ILogger<ResumenCuentaController> logger)
     {
         _dbFactory = dbFactory;
         _mpService = mpService;
+        _debitoService = debitoService;
         _logger = logger;
     }
 
@@ -329,6 +331,62 @@ public class ResumenCuentaController : ControllerBase
             total,
             externalReference,
         });
+    }
+
+    [HttpGet("debito-automatico")]
+    public async Task<IActionResult> GetDebitoAutomatico()
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit)) return Unauthorized();
+
+        var info = await _debitoService.GetByCuitAsync(cuit);
+        return Ok(info ?? new DebitoAutomaticoInfo());
+    }
+
+    [HttpPost("debito-automatico")]
+    public async Task<IActionResult> GuardarDebitoAutomatico([FromBody] GuardarDebitoAutomaticoRequest request)
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit)) return Unauthorized();
+
+        try
+        {
+            await _debitoService.GuardarAsync(cuit, request);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        _logger.LogInformation("Débito automático actualizado para CUIT={Cuit}", cuit);
+        return Ok(await _debitoService.GetByCuitAsync(cuit));
+    }
+
+    [HttpDelete("debito-automatico")]
+    public async Task<IActionResult> DarDeBajaDebitoAutomatico()
+    {
+        var cuit = GetCuit();
+        if (string.IsNullOrEmpty(cuit)) return Unauthorized();
+
+        try
+        {
+            await _debitoService.DarDeBajaAsync(cuit);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        _logger.LogInformation("Baja de débito automático solicitada para CUIT={Cuit}", cuit);
+        return Ok(await _debitoService.GetByCuitAsync(cuit));
     }
 
     [HttpPost("validar-pendientes")]
