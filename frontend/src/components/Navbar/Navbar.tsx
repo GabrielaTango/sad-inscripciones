@@ -18,7 +18,7 @@ const Navbar = () => {
   const isAdminRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/capitulo')
 
   useEffect(() => {
-    if (!isAuthenticated || esCapitulo) {
+    if (!isAuthenticated || esCapitulo || isAdmin) {
       setInscripcionesPendientes(0)
       setResumenCount(0)
       return
@@ -30,7 +30,7 @@ const Navbar = () => {
       setInscripcionesPendientes(insc.count)
       setResumenCount(res.count)
     })
-  }, [isAuthenticated, esCapitulo, location.pathname])
+  }, [isAuthenticated, esCapitulo, isAdmin, location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -67,13 +67,15 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center space-x-8">
             <NavLink className={navLinkClass} to="/">Inicio</NavLink>
-            <NavLink className={navLinkClass} to="/eventos">Eventos</NavLink>
-            {!esCapitulo && (
+            {!isAdmin && (
+              <NavLink className={navLinkClass} to="/eventos">Eventos</NavLink>
+            )}
+            {!esCapitulo && !isAdmin && (
               <NavLink className={navLinkClass} to="/mis-inscripciones">
                 Inscripciones{badge(inscripcionesPendientes)}
               </NavLink>
             )}
-            {isAuthenticated && !esCapitulo && (
+            {isAuthenticated && !esCapitulo && !isAdmin && (
               <NavLink className={navLinkClass} to="/resumen-cuenta">
                 Cuenta Corriente{badge(resumenCount)}
               </NavLink>
@@ -144,13 +146,15 @@ const Navbar = () => {
           <div className="lg:hidden py-4 border-t border-slate-100">
             <div className="flex flex-col space-y-3">
               <NavLink className={navLinkClass} to="/" onClick={() => setMobileOpen(false)}>Inicio</NavLink>
-              <NavLink className={navLinkClass} to="/eventos" onClick={() => setMobileOpen(false)}>Eventos</NavLink>
-              {!esCapitulo && (
+              {!isAdmin && (
+                <NavLink className={navLinkClass} to="/eventos" onClick={() => setMobileOpen(false)}>Eventos</NavLink>
+              )}
+              {!esCapitulo && !isAdmin && (
                 <NavLink className={navLinkClass} to="/mis-inscripciones" onClick={() => setMobileOpen(false)}>
                   Inscripciones{badge(inscripcionesPendientes)}
                 </NavLink>
               )}
-              {isAuthenticated && !esCapitulo && (
+              {isAuthenticated && !esCapitulo && !isAdmin && (
                 <NavLink className={navLinkClass} to="/resumen-cuenta" onClick={() => setMobileOpen(false)}>
                   Cuenta Corriente{badge(resumenCount)}
                 </NavLink>

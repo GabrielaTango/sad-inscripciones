@@ -24,6 +24,10 @@ public class EmailService : IEmailService
     private DateTime _cachedAt;
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
+    private ConfiguracionContacto? _cachedContacto;
+    private DateTime _cachedContactoAt;
+    private readonly SemaphoreSlim _contactoCacheLock = new(1, 1);
+
     public EmailService(
         IServiceScopeFactory scopeFactory,
         ICryptoService crypto,
@@ -137,9 +141,65 @@ public class EmailService : IEmailService
         _cachedConfig = null;
     }
 
+    public void InvalidarCacheContacto()
+    {
+        _cachedContacto = null;
+    }
+
+    public async Task EnviarConsultaContactoAsync(Contacto contacto)
+    {
+        try
+        {
+            var config = await GetConfigAsync();
+            if (!config.Activo)
+            {
+                _logger.LogInformation("Email deshabilitado en config; no se envía consulta de contacto {Id}", contacto.Id);
+                return;
+            }
+
+            var contactoConfig = await GetConfigContactoAsync();
+            if (!contactoConfig.Activo || string.IsNullOrWhiteSpace(contactoConfig.EmailDestino))
+            {
+                _logger.LogInformation("ConfiguracionContacto inactiva o sin destino; no se envía consulta {Id}", contacto.Id);
+                return;
+            }
+
+            var asunto = $"[Consulta Web] {contacto.Asunto} - {contacto.Nombre}";
+            var body = BuildContactoHtml(contacto);
+
+            await SendAsync(config, contactoConfig.EmailDestino, asunto, body, replyTo: contacto.Email);
+            _logger.LogInformation("Consulta de contacto {Id} enviada a {Destino}", contacto.Id, contactoConfig.EmailDestino);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falló envío de consulta de contacto {Id} ({Email})", contacto.Id, contacto.Email);
+        }
+    }
+
+    private static string BuildContactoHtml(Contacto c)
+    {
+        var nombre = System.Net.WebUtility.HtmlEncode(c.Nombre);
+        var email = System.Net.WebUtility.HtmlEncode(c.Email);
+        var asunto = System.Net.WebUtility.HtmlEncode(c.Asunto);
+        var mensajeHtml = System.Net.WebUtility.HtmlEncode(c.Mensaje).Replace("\n", "<br>");
+        return $@"<html><body style='font-family:Arial,sans-serif;color:#333'>
+            <h2 style='color:#5D8AC8'>Nueva consulta desde el sitio web</h2>
+            <table style='border-collapse:collapse;margin-bottom:16px'>
+                <tr><td style='padding:4px 12px 4px 0'><strong>Nombre:</strong></td><td>{nombre}</td></tr>
+                <tr><td style='padding:4px 12px 4px 0'><strong>Email:</strong></td><td><a href='mailto:{email}'>{email}</a></td></tr>
+                <tr><td style='padding:4px 12px 4px 0'><strong>Asunto:</strong></td><td>{asunto}</td></tr>
+                <tr><td style='padding:4px 12px 4px 0'><strong>Fecha:</strong></td><td>{c.FechaEnvio:dd/MM/yyyy HH:mm}</td></tr>
+            </table>
+            <div style='border-left:3px solid #5D8AC8;padding-left:12px;background:#f8fafc;padding:12px'>
+                <strong>Mensaje:</strong><br>{mensajeHtml}
+            </div>
+            <p style='color:#666;font-size:12px;margin-top:16px'>Respondiendo este mail le respondés directamente a {email}.</p>
+            </body></html>";
+    }
+
     // ---------- internals ----------
 
-    private async Task SendAsync(ConfiguracionEmail config, string toEmail, string subject, string htmlBody)
+    private async Task SendAsync(ConfiguracionEmail config, string toEmail, string subject, string htmlBody, string? replyTo = null)
     {
         if (string.IsNullOrWhiteSpace(config.Host))
             throw new InvalidOperationException("Host SMTP no configurado.");
@@ -150,8 +210,9 @@ public class EmailService : IEmailService
         message.From.Add(new MailboxAddress(config.FromName, config.FromEmail));
         message.To.Add(MailboxAddress.Parse(toEmail));
 
-        if (!string.IsNullOrWhiteSpace(config.ReplyTo))
-            message.ReplyTo.Add(MailboxAddress.Parse(config.ReplyTo));
+        var effectiveReplyTo = !string.IsNullOrWhiteSpace(replyTo) ? replyTo : config.ReplyTo;
+        if (!string.IsNullOrWhiteSpace(effectiveReplyTo))
+            message.ReplyTo.Add(MailboxAddress.Parse(effectiveReplyTo));
 
         if (!string.IsNullOrWhiteSpace(config.BccCopia))
         {
@@ -218,6 +279,29 @@ public class EmailService : IEmailService
         finally
         {
             _cacheLock.Release();
+        }
+    }
+
+    private async Task<ConfiguracionContacto> GetConfigContactoAsync()
+    {
+        if (_cachedContacto != null && DateTime.UtcNow - _cachedContactoAt < ConfigCacheTtl)
+            return _cachedContacto;
+
+        await _contactoCacheLock.WaitAsync();
+        try
+        {
+            if (_cachedContacto != null && DateTime.UtcNow - _cachedContactoAt < ConfigCacheTtl)
+                return _cachedContacto;
+
+            using var scope = _scopeFactory.CreateScope();
+            var configRepo = scope.ServiceProvider.GetRequiredService<IConfiguracionContactoRepository>();
+            _cachedContacto = await configRepo.GetAsync();
+            _cachedContactoAt = DateTime.UtcNow;
+            return _cachedContacto;
+        }
+        finally
+        {
+            _contactoCacheLock.Release();
         }
     }
 

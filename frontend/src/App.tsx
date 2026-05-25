@@ -32,6 +32,7 @@ import PromocionCuponesPage from './pages/admin/PromocionCuponesPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import PagosCuentaCorrienteAdminPage from './pages/admin/PagosCuentaCorrienteAdminPage'
 import ConfiguracionEmailPage from './pages/admin/ConfiguracionEmailPage'
+import ConfiguracionContactoPage from './pages/admin/ConfiguracionContactoPage'
 import ConfiguracionMercadoPagoPage from './pages/admin/ConfiguracionMercadoPagoPage'
 import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
 import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
@@ -77,6 +78,7 @@ function App() {
               <Route path="usuarios" element={<UsuariosAdminPage />} />
               <Route path="pagos-cuenta-corriente" element={<PagosCuentaCorrienteAdminPage />} />
               <Route path="configuracion-email" element={<ConfiguracionEmailPage />} />
+              <Route path="configuracion-contacto" element={<ConfiguracionContactoPage />} />
               <Route path="configuracion-mercadopago" element={<ConfiguracionMercadoPagoPage />} />
               <Route path="email-templates" element={<EmailTemplatesListPage />} />
               <Route path="email-templates/:codigo" element={<EmailTemplateEditorPage />} />

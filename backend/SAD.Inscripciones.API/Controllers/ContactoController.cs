@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.DTOs;
 using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
+using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
 
@@ -10,10 +11,12 @@ namespace SAD.Inscripciones.API.Controllers;
 public class ContactoController : ControllerBase
 {
     private readonly IContactoRepository _repository;
+    private readonly IEmailService _emailService;
 
-    public ContactoController(IContactoRepository repository)
+    public ContactoController(IContactoRepository repository, IEmailService emailService)
     {
         _repository = repository;
+        _emailService = emailService;
     }
 
     [HttpGet]
@@ -47,6 +50,9 @@ public class ContactoController : ControllerBase
 
         var id = await _repository.CreateAsync(contacto);
         contacto.Id = id;
+
+        await _emailService.EnviarConsultaContactoAsync(contacto);
+
         return CreatedAtAction(nameof(GetById), new { id }, contacto);
     }
 

@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { MapPin, Mail, Phone, Clock, CheckCircle, Send } from 'lucide-react'
+import { api } from '@/services/api'
 
 const ContactoPage = () => {
   const [form, setForm] = useState({ nombre: '', email: '', asunto: '', mensaje: '' })
   const [enviado, setEnviado] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -11,10 +14,20 @@ const ContactoPage = () => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Contacto:', form)
-    setEnviado(true)
+    setError(null)
+    setEnviando(true)
+    try {
+      await api.post('/contacto', form)
+      setEnviado(true)
+      setForm({ nombre: '', email: '', asunto: '', mensaje: '' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo enviar la consulta.'
+      setError(msg)
+    } finally {
+      setEnviando(false)
+    }
   }
 
   return (
@@ -142,9 +155,15 @@ const ContactoPage = () => {
                             required
                           ></textarea>
                         </div>
+                        {error && (
+                          <div className="md:col-span-2 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                            {error}
+                          </div>
+                        )}
                         <div className="md:col-span-2">
-                          <button type="submit" className="btn-primary btn-lg">
-                            <Send className="w-4 h-4 mr-2 inline" />Enviar Mensaje
+                          <button type="submit" className="btn-primary btn-lg" disabled={enviando}>
+                            <Send className="w-4 h-4 mr-2 inline" />
+                            {enviando ? 'Enviando...' : 'Enviar Mensaje'}
                           </button>
                         </div>
                       </div>

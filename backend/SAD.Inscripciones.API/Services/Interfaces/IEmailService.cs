@@ -31,4 +31,14 @@ public interface IEmailService
 
     /// <summary>Invalida el cache de configuración (después de un PUT).</summary>
     void InvalidarCache();
+
+    /// <summary>
+    /// Envía la consulta del formulario público de contacto al email destino
+    /// configurado en ConfiguracionContacto. No propaga errores: loguea y sigue,
+    /// para no abortar la persistencia del contacto en DB.
+    /// </summary>
+    Task EnviarConsultaContactoAsync(Contacto contacto);
+
+    /// <summary>Invalida el cache de ConfiguracionContacto.</summary>
+    void InvalidarCacheContacto();
 }

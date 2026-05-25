@@ -30,6 +30,7 @@ builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
 builder.Services.AddScoped<IPromocionRepository, PromocionRepository>();
 builder.Services.AddScoped<IPromocionCuponRepository, PromocionCuponRepository>();
 builder.Services.AddScoped<IConfiguracionEmailRepository, ConfiguracionEmailRepository>();
+builder.Services.AddScoped<IConfiguracionContactoRepository, ConfiguracionContactoRepository>();
 builder.Services.AddScoped<IConfiguracionMercadoPagoRepository, ConfiguracionMercadoPagoRepository>();
 builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
 
