@@ -90,15 +90,6 @@ public class Worker : BackgroundService
     {
         try
         {
-            await ProcessChangeTrackingAsync(stoppingToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error procesando Change Tracking");
-        }
-
-        try
-        {
             await SyncInscripcionesAsync();
         }
         catch (Exception ex)
@@ -140,6 +131,15 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sincronizando débitos automáticos a Tango");
+        }
+
+        try
+        {
+            await ProcessChangeTrackingAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error procesando Change Tracking");
         }
     }
 
