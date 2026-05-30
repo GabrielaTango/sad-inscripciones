@@ -22,6 +22,7 @@ Desktop.ini
 *.p12
 secrets.json
 paypal/mercadopago.txt
+Migra.txt
 
 # .NET — binarios y artefactos de build
 **/bin/
