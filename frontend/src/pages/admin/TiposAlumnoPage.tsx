@@ -6,7 +6,7 @@ import ConfirmDialog from '../../components/Admin/ConfirmDialog'
 import { tiposAlumnoService } from '../../services/tiposAlumnoService'
 import type { TipoAlumno, TipoAlumnoForm } from '../../types/models'
 
-const emptyForm: TipoAlumnoForm = { nombre: '', activo: true }
+const emptyForm: TipoAlumnoForm = { nombre: '', activo: true, extranjero: false }
 
 const TiposAlumnoPage = () => {
   const [data, setData] = useState<TipoAlumno[]>([])
@@ -25,7 +25,7 @@ const TiposAlumnoPage = () => {
   useEffect(() => { load() }, [load])
 
   const openCreate = () => { setForm(emptyForm); setEditId(null); setError(''); setShowForm(true) }
-  const openEdit = (item: TipoAlumno) => { setForm({ nombre: item.nombre, activo: item.activo }); setEditId(item.id); setError(''); setShowForm(true) }
+  const openEdit = (item: TipoAlumno) => { setForm({ nombre: item.nombre, activo: item.activo, extranjero: item.extranjero }); setEditId(item.id); setError(''); setShowForm(true) }
   const openDelete = (item: TipoAlumno) => { setDeleteId(item.id); setShowConfirm(true) }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +50,7 @@ const TiposAlumnoPage = () => {
   const columns = [
     { key: 'id', label: 'ID' },
     { key: 'nombre', label: 'Nombre' },
+    { key: 'extranjero', label: 'Extranjero', render: (item: TipoAlumno) => item.extranjero ? <span className="badge bg-amber-100 text-amber-700">Si</span> : <span className="badge bg-gray-100 text-gray-700">No</span> },
     { key: 'activo', label: 'Activo', render: (item: TipoAlumno) => item.activo ? <span className="badge bg-green-100 text-green-700">Si</span> : <span className="badge bg-gray-100 text-gray-700">No</span> },
   ]
 
@@ -67,6 +68,10 @@ const TiposAlumnoPage = () => {
         <div className="mb-3">
           <label className="form-label">Nombre *</label>
           <input type="text" className="form-input" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required />
+        </div>
+        <div className="form-check">
+          <input type="checkbox" className="form-check-input" id="extranjero" checked={form.extranjero} onChange={(e) => setForm({ ...form, extranjero: e.target.checked })} />
+          <label className="text-sm" htmlFor="extranjero">Extranjero (paga en USD vía PayPal)</label>
         </div>
         <div className="form-check">
           <input type="checkbox" className="form-check-input" id="activo" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} />

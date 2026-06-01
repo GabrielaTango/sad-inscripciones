@@ -281,6 +281,13 @@ public class SyncController : ControllerBase
                          AND p.EstadoPago = 'Confirmado'
                          AND p.DeletedAt IS NULL
                    ), i.PrecioFinal) AS PrecioFinal,
+                   COALESCE((
+                       SELECT MAX(p.Moneda)
+                       FROM Pagos p
+                       WHERE p.InscripcionId = i.Id
+                         AND p.EstadoPago = 'Confirmado'
+                         AND p.DeletedAt IS NULL
+                   ), 'ARS') AS Moneda,
                    i.FechaInscripcion, i.EventoId,
                    e.Titulo AS EventoTitulo,
                    (SELECT ep.ArticuloCodigo FROM EventoPrecios ep
@@ -313,7 +320,7 @@ public class SyncController : ControllerBase
         if (!ValidateApiKey()) return Unauthorized();
         using var conn = _dbFactory.CreateConnection();
         var pagos = await conn.QueryAsync<SyncPagoDto>(@"
-            SELECT p.Id, p.InscripcionId, p.Monto, p.MedioPago, p.ReferenciaExterna, p.FechaPago,
+            SELECT p.Id, p.InscripcionId, p.Monto, p.Moneda, p.MedioPago, p.ReferenciaExterna, p.FechaPago,
                    i.Documento, i.Nombre, i.Apellido, i.Email, i.Telefono,
                    i.Domicilio, i.CodigoPostal, i.Localidad, i.Provincia, i.Celular
             FROM Pagos p
@@ -565,6 +572,7 @@ public class SyncInscripcionDto
     public string? Provincia { get; set; }
     public string? Celular { get; set; }
     public decimal PrecioFinal { get; set; }
+    public string Moneda { get; set; } = "ARS";
     public DateTime FechaInscripcion { get; set; }
     public int EventoId { get; set; }
     public string? EventoTitulo { get; set; }
@@ -576,6 +584,7 @@ public class SyncPagoDto
     public int Id { get; set; }
     public int InscripcionId { get; set; }
     public decimal Monto { get; set; }
+    public string Moneda { get; set; } = "ARS";
     public string MedioPago { get; set; } = string.Empty;
     public string? ReferenciaExterna { get; set; }
     public DateTime? FechaPago { get; set; }

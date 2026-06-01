@@ -11,20 +11,29 @@ public class InscripcionesController : ControllerBase
 {
     private readonly IInscripcionService _service;
     private readonly IMercadoPagoService _mercadoPagoService;
+    private readonly IPayPalService _payPalService;
     private readonly IEventoService _eventoService;
+    private readonly ITipoAlumnoService _tipoAlumnoService;
+    private readonly IEventoPrecioService _eventoPrecioService;
     private readonly IInscripcionPagoValidationService _pagoValidation;
     private readonly ILogger<InscripcionesController> _logger;
 
     public InscripcionesController(
         IInscripcionService service,
         IMercadoPagoService mercadoPagoService,
+        IPayPalService payPalService,
         IEventoService eventoService,
+        ITipoAlumnoService tipoAlumnoService,
+        IEventoPrecioService eventoPrecioService,
         IInscripcionPagoValidationService pagoValidation,
         ILogger<InscripcionesController> logger)
     {
         _service = service;
         _mercadoPagoService = mercadoPagoService;
+        _payPalService = payPalService;
         _eventoService = eventoService;
+        _tipoAlumnoService = tipoAlumnoService;
+        _eventoPrecioService = eventoPrecioService;
         _pagoValidation = pagoValidation;
         _logger = logger;
     }
@@ -117,6 +126,29 @@ public class InscripcionesController : ControllerBase
 
         _logger.LogInformation(">>> Inscripcion creada Id={Id}, PrecioFinal={PrecioFinal}",
             inscripcion.Id, inscripcion.PrecioFinal);
+
+        // Categoría extranjera: se cobra en USD vía PayPal (client-side), no por MercadoPago.
+        var tipoAlumno = await _tipoAlumnoService.GetByIdAsync(inscripcion.TipoAlumnoId);
+        if (tipoAlumno.Extranjero)
+        {
+            var precios = await _eventoPrecioService.GetByEventoIdAsync(inscripcion.EventoId);
+            var precio = precios.FirstOrDefault(p => p.TipoAlumnoId == inscripcion.TipoAlumnoId && p.Activo);
+            var montoUsd = precio?.PrecioDolares ?? 0m;
+            if (montoUsd <= 0)
+                throw new Exceptions.BusinessException(
+                    $"La inscripción (#{inscripcion.Id}) se registró, pero la categoría extranjera no tiene un precio en USD configurado.");
+
+            _logger.LogInformation(">>> Inscripcion {Id} es extranjera, pago por PayPal montoUsd={Monto}", inscripcion.Id, montoUsd);
+            return Ok(new
+            {
+                inscripcion.Id,
+                inscripcion.PrecioFinal,
+                initPoint = (string?)null,
+                paypal = true,
+                montoUsd,
+                moneda = "USD",
+            });
+        }
 
         // Si el precio final es 0 (beca 100%, etc.), no necesita pago
         if (inscripcion.PrecioFinal <= 0)
@@ -292,6 +324,36 @@ public class InscripcionesController : ControllerBase
             estadoInscripcion = resultado.EstadoNuevo,
             estadoPago = resultado.MontoAprobado > 0 ? "Confirmado" : "Pendiente",
             transactionAmount = resultado.MontoAprobado,
+        });
+    }
+
+    /// <summary>
+    /// Llamado por el frontend tras capturar el pago de PayPal (socios extranjeros).
+    /// Registra el Pago en USD y confirma la inscripción. Idempotente por (inscripcion, order).
+    /// </summary>
+    [HttpPost("confirmar-pago-paypal")]
+    public async Task<IActionResult> ConfirmarPagoPayPal([FromBody] ConfirmarPagoPayPalDto dto)
+    {
+        _logger.LogInformation(">>> ConfirmarPagoPayPal: inscripcion={Id}, orderId={OrderId}, monto={Monto}",
+            dto.InscripcionId, dto.OrderId, dto.Monto);
+
+        ConfirmarPagoPayPalResult resultado;
+        try
+        {
+            resultado = await _payPalService.ConfirmarPagoAsync(dto, GetCurrentUser());
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        return Ok(new
+        {
+            inscripcionId = resultado.InscripcionId,
+            estadoInscripcion = resultado.EstadoInscripcion,
+            estadoPago = resultado.EstadoPago,
+            transactionAmount = resultado.Monto,
+            currency = resultado.Moneda,
         });
     }
 

@@ -19,6 +19,8 @@ public class TangoInscripcionService
     private int TalonarioPedido => _config.GetValue("InscripcionSync:TalonarioPedido", 99);
     private int TalonarioFactura => _config.GetValue("InscripcionSync:TalonarioFactura", 8);
     private string TipoAsientoModelo => _config["InscripcionSync:TipoAsientoModelo"] ?? "02";
+    private string CotizacionCodMoneda => _config["InscripcionSync:CotizacionCodMoneda"] ?? "DOL";
+    private string CotizacionCodTipoCotizacion => _config["InscripcionSync:CotizacionCodTipoCotizacion"] ?? "COTIZACIÓN";
 
     public TangoInscripcionService(
         ILogger<TangoInscripcionService> logger,
@@ -43,6 +45,22 @@ public class TangoInscripcionService
             // 1. Asegurar cliente en Tango (lookup por CUIT, crea si no existe)
             var codClient = await _clienteService.EnsureClienteAsync(conn, tx, DatosClienteTango.FromInscripcion(insc));
 
+            // 1.b Moneda: si es USD se convierte a pesos con la cotización del día.
+            //     El comprobante queda en moneda corriente (importe = USD * cotiz) y se
+            //     registra la COTIZ como dato. Si es ARS, cotiz=1 y todo queda igual que antes.
+            var moneda = (insc.Moneda ?? "ARS").Trim().ToUpperInvariant();
+            decimal cotiz = 1m;
+            decimal montoComprobante = insc.PrecioFinal;
+            if (moneda == "USD")
+            {
+                var c = await TangoHelpers.TraerCotizacionAsync(conn, tx, CotizacionCodMoneda, CotizacionCodTipoCotizacion);
+                if (c is null || c <= 0)
+                    throw new InvalidOperationException(
+                        $"No hay cotización de {CotizacionCodMoneda} en Tango; la inscripción {insc.Id} (USD) no se puede sincronizar todavía.");
+                cotiz = c.Value;
+                montoComprobante = Math.Round(insc.PrecioFinal * cotiz, 2);
+            }
+
             // 2. Crear pedido (GVA21)
             var nroPedido = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioPedido);
             var idAsientoModelo = await TangoHelpers.TraerIdAsientoModeloAsync(conn, tx, TipoAsientoModelo);
@@ -61,8 +79,9 @@ public class TangoInscripcionService
             gva21.SetDate("FECHA_ENTR", now);
             gva21.Set("LEYENDA_1", "FACINSCRIP");
             gva21.Set("LEYENDA_2", inscId);
-            gva21.SetDecimal("TOTAL_PEDI", insc.PrecioFinal);
-            gva21.SetDecimal("TOTAL_PEDI_CON_IMPUESTOS", insc.PrecioFinal);
+            gva21.SetDecimal("TOTAL_PEDI", montoComprobante);
+            gva21.SetDecimal("TOTAL_PEDI_CON_IMPUESTOS", montoComprobante);
+            gva21.SetDecimal("COTIZ", cotiz);
             gva21.SetInt("ID_ASIENTO_MODELO_GV", idAsientoModelo);
             gva21.SetDate("FECHA_ULTIMA_MODIFICACION", now);
             await conn.ExecuteAsync(gva21.Insert(), transaction: tx);
@@ -75,7 +94,7 @@ public class TangoInscripcionService
             gva03.Set("COD_ARTICU", codArticu);
             gva03.Set("NRO_PEDIDO", nroPedido);
             gva03.SetInt("TALON_PED", TalonarioPedido);
-            gva03.CalcularPrecio(insc.PrecioFinal, impuesto);
+            gva03.CalcularPrecio(montoComprobante, impuesto);
             await conn.ExecuteAsync(gva03.Insert(), transaction: tx);
 
             // Actualizar próximo nro pedido

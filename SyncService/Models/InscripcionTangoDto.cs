@@ -14,6 +14,7 @@ public class InscripcionTangoDto
     public string? Provincia { get; set; }
     public string? Celular { get; set; }
     public decimal PrecioFinal { get; set; }
+    public string Moneda { get; set; } = "ARS";
     public DateTime FechaInscripcion { get; set; }
     public int EventoId { get; set; }
     public string? EventoTitulo { get; set; }

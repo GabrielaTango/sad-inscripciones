@@ -9,8 +9,10 @@ import { becaCodigosService } from '../services/becaCodigosService'
 import { promocionCuponesService, type PromocionCuponDisponible } from '../services/promocionCuponesService'
 import { provinciasService } from '../services/provinciasService'
 import { authService } from '../services/authService'
+import { configuracionPayPalService } from '../services/configuracionPayPalService'
+import PayPalCheckout from '../components/PayPalCheckout'
 import { useAuth } from '../context/AuthContext'
-import type { Evento, EventoPrecio, TipoAlumno, InscripcionForm, Provincia } from '../types/models'
+import type { Evento, EventoPrecio, TipoAlumno, InscripcionForm, Provincia, ConfiguracionPayPalPublic } from '../types/models'
 
 // Clasifica un TipoAlumno segun su nombre. El prefijo "NO" es el diferenciador:
 // "NO SOCIO" / "NO SOCIO EXTRANJERO" -> no-socio ; "SOCIO" / "SOCIO EXTRANJERO" -> socio.
@@ -60,6 +62,7 @@ const InscripcionPage = () => {
   const [cuponesDisponibles, setCuponesDisponibles] = useState<PromocionCuponDisponible[]>([])
   const [aceptaTerminos, setAceptaTerminos] = useState(false)
   const [modalidadPago, setModalidadPago] = useState<'unico' | 'cuotas' | 'reserva'>('unico')
+  const [paypalConfig, setPaypalConfig] = useState<ConfiguracionPayPalPublic | null>(null)
 
   // Socio detectado
   const [esSocio, setEsSocio] = useState(false)
@@ -78,13 +81,14 @@ const InscripcionPage = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [ev, prec, tipos, provs] = await Promise.all([
+        const [ev, prec, tipos, provs, ppCfg] = await Promise.all([
           eventosService.getById(id),
           eventoPreciosService.getByEventoId(id),
           tiposAlumnoService.getAll().catch(() => [] as TipoAlumno[]),
           provinciasService.getAll().catch(() => [] as Provincia[]),
+          configuracionPayPalService.getPublic().catch(() => null),
         ])
-        setEvento(ev); setPrecios(prec); setTiposAlumno(tipos); setProvincias(provs)
+        setEvento(ev); setPrecios(prec); setTiposAlumno(tipos); setProvincias(provs); setPaypalConfig(ppCfg)
 
         if (isAuthenticated) {
           try {
@@ -128,6 +132,10 @@ const InscripcionPage = () => {
 
   const selectedPrecio = precios.find(p => p.tipoAlumnoId === form.tipoAlumnoId && p.activo)
   const tipoAlumnoNombre = (taId: number) => tiposAlumno.find(t => t.id === taId)?.nombre || ''
+
+  // Categoría extranjera -> cobro en USD vía PayPal (en lugar de MercadoPago).
+  const esExtranjero = !!tiposAlumno.find(t => t.id === form.tipoAlumnoId)?.extranjero
+  const montoUsd = selectedPrecio?.precioDolares ?? null
 
   // Sin DNI validado como socio -> solo categorias "no socio". Validado como socio -> solo "socio".
   // Si es socio pero el evento no tiene precios de socio, cae a los de no socio.
@@ -250,6 +258,38 @@ const InscripcionPage = () => {
       }
       setError(msg)
     } finally { setSubmitting(false) }
+  }
+
+  // --- Flujo PayPal (socios extranjeros) ---
+  // Crea la inscripción pendiente y devuelve su id; se invoca al iniciar el pago en PayPal.
+  const crearInscripcionPayPal = async (): Promise<number> => {
+    setError('')
+    try {
+      const result = await inscripcionesService.create({ ...form, cuotas: 1, modalidadPago: 'unico' })
+      return result.id
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al registrar la inscripcion.'
+      if (msg.includes('Ya existe una inscripción para este evento')) {
+        navigate(`/mis-inscripciones?documento=${encodeURIComponent(form.documento.trim())}&eventoId=${id}`)
+      }
+      setError(msg)
+      throw err
+    }
+  }
+
+  const onPayPalSuccess = async (orderId: string, inscripcionId: number) => {
+    try {
+      await inscripcionesService.confirmarPagoPayPal(inscripcionId, orderId, montoUsd ?? 0)
+    } catch {
+      // El pago ya se capturó en PayPal; si la confirmación falla igual mostramos el resultado.
+    }
+    navigate('/pago/resultado?status=approved')
+  }
+
+  const validarPayPal = (): string | null => {
+    if (!form.tipoAlumnoId) return 'Seleccioná una categoría.'
+    if (evento?.terminosArchivo && !aceptaTerminos) return 'Debés aceptar los términos y condiciones.'
+    return null
   }
 
   if (loading) return <div className="text-center py-16"><div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>
@@ -499,7 +539,35 @@ const InscripcionPage = () => {
                       )}
 
                       <div className="md:col-span-12 mt-4">
-                        {selectedPrecio && selectedPrecio.precioBase > 0 ? (
+                        {selectedPrecio && esExtranjero ? (
+                          montoUsd && montoUsd > 0 ? (
+                            paypalConfig?.clientId ? (
+                              <>
+                                <div className="mb-3 text-slate-700">
+                                  Pago en dólares: <strong>USD {montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+                                </div>
+                                <PayPalCheckout
+                                  clientId={paypalConfig.clientId}
+                                  currency={paypalConfig.moneda || 'USD'}
+                                  amount={montoUsd}
+                                  createInscripcion={crearInscripcionPayPal}
+                                  onSuccess={onPayPalSuccess}
+                                  validate={validarPayPal}
+                                />
+                                <div className="text-center mt-2">
+                                  <span className="text-sm text-slate-600">
+                                    <ShieldCheck className="inline mr-1" size={14} />
+                                    Pago seguro procesado por PayPal
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="alert-danger mb-0">El pago con PayPal no está disponible en este momento.</div>
+                            )
+                          ) : (
+                            <div className="alert-danger mb-0">Esta categoría no tiene un precio en dólares configurado.</div>
+                          )
+                        ) : selectedPrecio && selectedPrecio.precioBase > 0 ? (
                           <>
                             <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3">
                               <label className="inline-flex items-center gap-2 cursor-pointer">

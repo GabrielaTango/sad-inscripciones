@@ -32,6 +32,7 @@ builder.Services.AddScoped<IPromocionCuponRepository, PromocionCuponRepository>(
 builder.Services.AddScoped<IConfiguracionEmailRepository, ConfiguracionEmailRepository>();
 builder.Services.AddScoped<IConfiguracionContactoRepository, ConfiguracionContactoRepository>();
 builder.Services.AddScoped<IConfiguracionMercadoPagoRepository, ConfiguracionMercadoPagoRepository>();
+builder.Services.AddScoped<IConfiguracionPayPalRepository, ConfiguracionPayPalRepository>();
 builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
 
 // Services
@@ -49,6 +50,7 @@ builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IPromocionService, PromocionService>();
 builder.Services.AddScoped<IPromocionCuponService, PromocionCuponService>();
 builder.Services.AddSingleton<IMercadoPagoService, MercadoPagoService>();
+builder.Services.AddScoped<IPayPalService, PayPalService>();
 builder.Services.AddScoped<IInscripcionPagoValidationService, InscripcionPagoValidationService>();
 builder.Services.AddSingleton<ICryptoService, CryptoService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();

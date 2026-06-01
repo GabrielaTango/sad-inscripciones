@@ -15,6 +15,7 @@ export interface TipoEvento extends BaseEntity {
 export interface TipoAlumno extends BaseEntity {
   nombre: string
   activo: boolean
+  extranjero: boolean
 }
 
 export interface Evento extends BaseEntity {
@@ -37,6 +38,7 @@ export interface EventoPrecio extends BaseEntity {
   tipoAlumnoId: number
   articuloCodigo?: string
   precioBase: number
+  precioDolares?: number | null
   precioCuotas?: number
   cantidadCuotas: number
   permiteDescuento: boolean
@@ -115,6 +117,8 @@ export interface Inscripcion extends BaseEntity {
   institucion?: string
   sector?: string
   sincronizadoTango?: boolean
+  extranjero?: boolean
+  montoDolares?: number | null
 }
 
 export interface Provincia {
@@ -160,6 +164,7 @@ export interface TipoEventoForm {
 export interface TipoAlumnoForm {
   nombre: string
   activo: boolean
+  extranjero: boolean
 }
 
 export interface EventoForm {
@@ -180,6 +185,7 @@ export interface EventoPrecioForm {
   tipoAlumnoId: number
   articuloCodigo?: string
   precioBase: number
+  precioDolares?: number | null
   precioCuotas?: number | null
   cantidadCuotas: number
   permiteDescuento: boolean
@@ -353,6 +359,23 @@ export interface ConfiguracionMercadoPago {
 export interface ConfiguracionMercadoPagoForm {
   accessToken?: string
   frontendBaseUrl: string
+}
+
+export interface ConfiguracionPayPal {
+  clientId: string
+  moneda: string
+  updatedAt?: string
+  updatedBy?: string | null
+}
+
+export interface ConfiguracionPayPalForm {
+  clientId: string
+  moneda: string
+}
+
+export interface ConfiguracionPayPalPublic {
+  clientId: string
+  moneda: string
 }
 
 export interface EmailTemplateListItem {

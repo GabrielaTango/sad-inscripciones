@@ -18,8 +18,16 @@ public class InscripcionRepository : IInscripcionRepository
     public async Task<IEnumerable<Inscripcion>> GetAllAsync()
     {
         using var connection = _dbFactory.CreateConnection();
-        return await connection.QueryAsync<Inscripcion>(
-            "SELECT * FROM Inscripciones WHERE DeletedAt IS NULL ORDER BY FechaInscripcion DESC");
+        return await connection.QueryAsync<Inscripcion>(@"
+            SELECT i.*,
+                   COALESCE(ta.Extranjero, 0) AS Extranjero,
+                   (SELECT SUM(p.Monto) FROM Pagos p
+                     WHERE p.InscripcionId = i.Id AND p.EstadoPago = 'Confirmado'
+                       AND p.Moneda = 'USD' AND p.DeletedAt IS NULL) AS MontoDolares
+            FROM Inscripciones i
+            LEFT JOIN TiposAlumno ta ON ta.Id = i.TipoAlumnoId
+            WHERE i.DeletedAt IS NULL
+            ORDER BY i.FechaInscripcion DESC");
     }
 
     public async Task<Inscripcion?> GetByIdAsync(int id)
@@ -32,8 +40,16 @@ public class InscripcionRepository : IInscripcionRepository
     public async Task<IEnumerable<Inscripcion>> GetByEventoIdAsync(int eventoId)
     {
         using var connection = _dbFactory.CreateConnection();
-        return await connection.QueryAsync<Inscripcion>(
-            "SELECT * FROM Inscripciones WHERE EventoId = @EventoId AND DeletedAt IS NULL ORDER BY FechaInscripcion DESC",
+        return await connection.QueryAsync<Inscripcion>(@"
+            SELECT i.*,
+                   COALESCE(ta.Extranjero, 0) AS Extranjero,
+                   (SELECT SUM(p.Monto) FROM Pagos p
+                     WHERE p.InscripcionId = i.Id AND p.EstadoPago = 'Confirmado'
+                       AND p.Moneda = 'USD' AND p.DeletedAt IS NULL) AS MontoDolares
+            FROM Inscripciones i
+            LEFT JOIN TiposAlumno ta ON ta.Id = i.TipoAlumnoId
+            WHERE i.EventoId = @EventoId AND i.DeletedAt IS NULL
+            ORDER BY i.FechaInscripcion DESC",
             new { EventoId = eventoId });
     }
 

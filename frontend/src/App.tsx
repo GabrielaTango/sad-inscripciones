@@ -34,6 +34,7 @@ import PagosCuentaCorrienteAdminPage from './pages/admin/PagosCuentaCorrienteAdm
 import ConfiguracionEmailPage from './pages/admin/ConfiguracionEmailPage'
 import ConfiguracionContactoPage from './pages/admin/ConfiguracionContactoPage'
 import ConfiguracionMercadoPagoPage from './pages/admin/ConfiguracionMercadoPagoPage'
+import ConfiguracionPayPalPage from './pages/admin/ConfiguracionPayPalPage'
 import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
 import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 
@@ -80,6 +81,7 @@ function App() {
               <Route path="configuracion-email" element={<ConfiguracionEmailPage />} />
               <Route path="configuracion-contacto" element={<ConfiguracionContactoPage />} />
               <Route path="configuracion-mercadopago" element={<ConfiguracionMercadoPagoPage />} />
+              <Route path="configuracion-paypal" element={<ConfiguracionPayPalPage />} />
               <Route path="email-templates" element={<EmailTemplatesListPage />} />
               <Route path="email-templates/:codigo" element={<EmailTemplateEditorPage />} />
             </Route>

@@ -5,6 +5,7 @@ public class PagoTangoDto
     public int Id { get; set; }
     public int InscripcionId { get; set; }
     public decimal Monto { get; set; }
+    public string Moneda { get; set; } = "ARS";
     public string MedioPago { get; set; } = string.Empty;
     public string? ReferenciaExterna { get; set; }
     public DateTime? FechaPago { get; set; }

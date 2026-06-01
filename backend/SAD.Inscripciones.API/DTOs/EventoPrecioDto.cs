@@ -15,6 +15,8 @@ public class EventoPrecioDto
     [Required]
     public decimal PrecioBase { get; set; }
 
+    public decimal? PrecioDolares { get; set; }
+
     public decimal? PrecioCuotas { get; set; }
 
     public int CantidadCuotas { get; set; } = 6;
