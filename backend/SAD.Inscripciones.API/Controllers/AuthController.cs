@@ -53,8 +53,12 @@ public class AuthController : ControllerBase
         var cuit = loginDto.Usuario;
 
         using var connection = _dbFactory.CreateConnection();
+        // Solo los socios reales pueden ingresar al portal. En el espejo de Tango (GVA14)
+        // el COD_CLIENT de un socio empieza con '0'; los 'L…' (otra categoría) y los
+        // 'P…'-'W…' (clientes creados por el propio sistema al inscribir gente a eventos)
+        // NO son socios.
         var result = await connection.QueryFirstOrDefaultAsync<dynamic>(
-            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit",
+            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit AND CodClient LIKE '0%'",
             new { Cuit = cuit });
 
         if (result == null)
@@ -100,8 +104,10 @@ public class AuthController : ControllerBase
     private async Task<SocioDataDto?> BuscarSocioEnClientes(string cuit)
     {
         using var connection = _dbFactory.CreateConnection();
+        // Solo socios reales (COD_CLIENT '0…'). Esto define el flag esSocio del frontend
+        // y, por ende, el autocompletado de datos y el bucket de precios de socio.
         var result = await connection.QueryFirstOrDefaultAsync<dynamic>(
-            "SELECT Cuit, RazonSoci, Domicilio, CodPostal, CodProvin FROM Clientes WHERE Cuit = @Cuit",
+            "SELECT Cuit, RazonSoci, Domicilio, CodPostal, CodProvin FROM Clientes WHERE Cuit = @Cuit AND CodClient LIKE '0%'",
             new { Cuit = cuit });
 
         if (result == null)
