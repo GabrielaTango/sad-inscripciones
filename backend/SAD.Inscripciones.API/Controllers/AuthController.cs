@@ -53,12 +53,13 @@ public class AuthController : ControllerBase
         var cuit = loginDto.Usuario;
 
         using var connection = _dbFactory.CreateConnection();
-        // Solo los socios reales pueden ingresar al portal. En el espejo de Tango (GVA14)
-        // el COD_CLIENT de un socio empieza con '0'; los 'L…' (otra categoría) y los
-        // 'P…'-'W…' (clientes creados por el propio sistema al inscribir gente a eventos)
-        // NO son socios.
+        // Pueden ingresar al portal los socios reales (COD_CLIENT '0…') y los clientes 'P…'.
+        // OJO: los 'P…' pueden loguearse pero NO son socios — el endpoint socio-data sigue
+        // filtrando solo '0…', así que el flag esSocio del frontend queda en false y, en la
+        // inscripción, InscripcionService rechaza las categorías de socio para estos clientes.
+        // El resto ('L…' y otros) NO puede ingresar.
         var result = await connection.QueryFirstOrDefaultAsync<dynamic>(
-            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit AND CodClient LIKE '0%'",
+            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit AND (CodClient LIKE '0%' OR CodClient LIKE 'P%')",
             new { Cuit = cuit });
 
         if (result == null)

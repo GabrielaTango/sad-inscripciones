@@ -531,6 +531,10 @@ const InscripcionPage = () => {
                             )}
 
                             {modalidadPago === 'reserva' && (
+                              <p className="text-xl font-semibold text-red-600 text-center mb-2">No reembolsable</p>
+                            )}
+
+                            {modalidadPago === 'reserva' && (
                               <button type="button" className="btn-accent btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
                                 {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><BookmarkCheck className="inline mr-2" size={18} />Reservar vacante por ${Math.round(selectedPrecio.precioBase * 0.3).toLocaleString('es-AR')}</>}
                               </button>

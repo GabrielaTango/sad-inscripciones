@@ -14,6 +14,7 @@ public interface IInscripcionRepository
     Task<int> CreateAsync(Inscripcion entity, IDbConnection? connection = null, IDbTransaction? transaction = null);
     Task<bool> UpdateAsync(Inscripcion entity);
     Task<bool> UpdateEstadoAsync(int id, string estado, string updatedBy);
+    Task<int> RecalcularPreciosByEventoTipoAlumnoAsync(int eventoId, int tipoAlumnoId, decimal nuevoPrecioBase, decimal? nuevoPrecioCuotas, int nuevaCantidadCuotas, string updatedBy);
     Task<bool> SoftDeleteAsync(int id, string deletedBy);
     Task<IEnumerable<DTOs.InscripcionPendienteDto>> GetPendientesByDocumentoAsync(string documento, int? eventoId);
     Task<int> CountPendientesByDocumentoAsync(string documento);

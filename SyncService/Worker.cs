@@ -407,7 +407,7 @@ public class Worker : BackgroundService
                            C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
                            COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
                            CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
-                    FROM GVA14 WHERE CUIT = @Clave",
+                    FROM GVA14 WHERE CUIT = @Clave AND FECHA_INHA = '1800-01-01'",
                     new { Clave = clave });
                 if (cliente != null)
                     await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim(), debitoAutomaticoTango = (string?)cliente.DebitoAutomaticoTango?.ToString().Trim() });
@@ -546,7 +546,7 @@ public class Worker : BackgroundService
                        C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
                        COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
                        CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
-                FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != ''"))
+                FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != '' AND FECHA_INHA = '1800-01-01'"))
                 .Select(c => new
                 {
                     cuit = ((string?)c.Cuit?.ToString())?.Trim(),

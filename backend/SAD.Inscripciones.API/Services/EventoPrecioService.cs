@@ -10,12 +10,14 @@ public class EventoPrecioService : IEventoPrecioService
     private readonly IEventoPrecioRepository _repository;
     private readonly IEventoRepository _eventoRepository;
     private readonly ITipoAlumnoRepository _tipoAlumnoRepository;
+    private readonly IInscripcionRepository _inscripcionRepository;
 
-    public EventoPrecioService(IEventoPrecioRepository repository, IEventoRepository eventoRepository, ITipoAlumnoRepository tipoAlumnoRepository)
+    public EventoPrecioService(IEventoPrecioRepository repository, IEventoRepository eventoRepository, ITipoAlumnoRepository tipoAlumnoRepository, IInscripcionRepository inscripcionRepository)
     {
         _repository = repository;
         _eventoRepository = eventoRepository;
         _tipoAlumnoRepository = tipoAlumnoRepository;
+        _inscripcionRepository = inscripcionRepository;
     }
 
     public async Task<IEnumerable<EventoPrecio>> GetAllAsync() => await _repository.GetAllAsync();
@@ -49,6 +51,12 @@ public class EventoPrecioService : IEventoPrecioService
         if (await _tipoAlumnoRepository.GetByIdAsync(entity.TipoAlumnoId) == null)
             throw new BusinessException($"TipoAlumno con Id {entity.TipoAlumnoId} no existe.");
         await _repository.UpdateAsync(entity);
+
+        // Propaga el nuevo precio a las inscripciones aún no cobradas (Reservada/Pendiente) de este
+        // evento + tipo de alumno, manteniendo el mismo % de descuento. Las Confirmadas no se tocan
+        // porque suelen tener pago hecho y/o factura ya sincronizada a Tango.
+        await _inscripcionRepository.RecalcularPreciosByEventoTipoAlumnoAsync(
+            entity.EventoId, entity.TipoAlumnoId, entity.PrecioBase, entity.PrecioCuotas, entity.CantidadCuotas, entity.UpdatedBy);
     }
 
     public async Task DeleteAsync(int id, string deletedBy)

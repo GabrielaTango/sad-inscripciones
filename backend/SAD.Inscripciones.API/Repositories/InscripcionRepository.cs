@@ -114,6 +114,41 @@ public class InscripcionRepository : IInscripcionRepository
         return await connection.ExecuteAsync(sql, new { Id = id, Estado = estado, UpdatedBy = updatedBy }) > 0;
     }
 
+    public async Task<int> RecalcularPreciosByEventoTipoAlumnoAsync(int eventoId, int tipoAlumnoId, decimal nuevoPrecioBase, decimal? nuevoPrecioCuotas, int nuevaCantidadCuotas, string updatedBy)
+    {
+        // Recalcula los precios de las inscripciones aún no cobradas (Reservada/Pendiente) cuando se cambia
+        // el precio del evento para un tipo de alumno. Mantiene el mismo % de descuento que tenía cada
+        // inscripción (DescuentoAplicado / PrecioBase) y lo aplica sobre el precio nuevo.
+        // NO se toca MontoReserva: la reserva ya fue cobrada con el monto viejo, así que se respeta;
+        // solo cambia el saldo pendiente (PrecioFinal - reserva ya pagada).
+        // MySQL evalúa las asignaciones del SET de izquierda a derecha; PrecioBase se asigna AL FINAL para que
+        // todas las expresiones previas usen el PrecioBase original al calcular el porcentaje de descuento.
+        using var connection = _dbFactory.CreateConnection();
+        const string sql = @"
+            UPDATE Inscripciones
+            SET DescuentoAplicado = @NuevoPrecioBase * (CASE WHEN PrecioBase > 0 THEN DescuentoAplicado / PrecioBase ELSE 0 END),
+                PrecioFinal = GREATEST(0, @NuevoPrecioBase - @NuevoPrecioBase * (CASE WHEN PrecioBase > 0 THEN DescuentoAplicado / PrecioBase ELSE 0 END)),
+                PrecioFinalCuotas = CASE WHEN @NuevoPrecioCuotas IS NOT NULL AND @NuevoPrecioCuotas > 0
+                    THEN GREATEST(0, @NuevoPrecioCuotas - @NuevoPrecioCuotas * (CASE WHEN PrecioBase > 0 THEN DescuentoAplicado / PrecioBase ELSE 0 END))
+                    ELSE NULL END,
+                CantidadCuotas = CASE WHEN @NuevoPrecioCuotas IS NOT NULL AND @NuevoPrecioCuotas > 0
+                    THEN @NuevaCantidadCuotas ELSE NULL END,
+                PrecioBase = @NuevoPrecioBase,
+                UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
+            WHERE EventoId = @EventoId AND TipoAlumnoId = @TipoAlumnoId
+              AND Estado IN ('Reservada', 'Pendiente')
+              AND DeletedAt IS NULL";
+        return await connection.ExecuteAsync(sql, new
+        {
+            EventoId = eventoId,
+            TipoAlumnoId = tipoAlumnoId,
+            NuevoPrecioBase = nuevoPrecioBase,
+            NuevoPrecioCuotas = nuevoPrecioCuotas,
+            NuevaCantidadCuotas = nuevaCantidadCuotas,
+            UpdatedBy = updatedBy
+        });
+    }
+
     public async Task<bool> SoftDeleteAsync(int id, string deletedBy)
     {
         using var connection = _dbFactory.CreateConnection();
