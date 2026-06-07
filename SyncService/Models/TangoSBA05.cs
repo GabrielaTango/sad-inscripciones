@@ -16,12 +16,10 @@ public class TangoSBA05 : TangoEntity
         if (dh == "D")
         {
             Set("COD_OPERAC", "");
-            SetInt("RENGLON", 1);
             SetInt("ID_SBA11", -1);
         }
         else
         {
-            SetInt("RENGLON", 0);
             SetInt("ID_SBA11", -1);
         }
 

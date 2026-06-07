@@ -491,16 +491,26 @@ public class Worker : BackgroundService
 
     private async Task SyncResumenClienteAsync(SqlConnection conn, string codClient, string cuit)
     {
+        // Trae TODOS los comprobantes con saldo (cuotas societarias y otros).
+        // EsCuota = 1 si algún artículo del comprobante es "CUOTA", 0 si no.
+        // EsCuota se calcula con un EXISTS para no meter GVA53 en el FROM (haría
+        // producto cartesiano con las imputaciones e inflaría el saldo en facturas
+        // multi-renglón). El EXISTS sobre GVA53 también conserva el comportamiento
+        // previo de incluir solo comprobantes con renglones (excluye recibos).
         const string sql = @"
             SELECT GVA46.T_COMP AS TComp, GVA46.N_COMP AS NComp, GVA46.FECHA_VTO AS FechaVto,
-                   GVA46.IMPORTE_VT + SUM(ISNULL(IMPORT_CAN,0) * CASE WHEN TIPO_COMP = 'D' THEN 1 ELSE -1 END) AS Saldo
+                   GVA46.IMPORTE_VT + SUM(ISNULL(IMPORT_CAN,0) * CASE WHEN TIPO_COMP = 'D' THEN 1 ELSE -1 END) AS Saldo,
+                   CASE WHEN EXISTS (
+                        SELECT 1 FROM GVA53 R
+                        INNER JOIN STA11 ON STA11.COD_ARTICU = R.COD_ARTICU AND STA11.DESCRIPCIO LIKE '%CUOTA%'
+                        WHERE R.T_COMP = GVA46.T_COMP AND R.N_COMP = GVA46.N_COMP
+                   ) THEN 1 ELSE 0 END AS EsCuota
             FROM GVA46
-            INNER JOIN GVA53 ON GVA53.T_COMP = GVA46.T_COMP AND GVA53.N_COMP = GVA46.N_COMP
-            INNER JOIN STA11 ON STA11.COD_ARTICU = GVA53.COD_ARTICU AND STA11.DESCRIPCIO LIKE '%CUOTA%'
             LEFT OUTER JOIN GVA12 ON GVA12.T_COMP = GVA46.T_COMP AND GVA12.N_COMP = GVA46.N_COMP
             LEFT OUTER JOIN GVA07 IMPU ON IMPU.T_COMP = GVA46.T_COMP AND IMPU.N_COMP = GVA46.N_COMP AND IMPU.FECHA_VTO = GVA46.FECHA_VTO
             LEFT OUTER JOIN GVA15 ON GVA15.IDENT_COMP = IMPU.T_COMP_CAN
             WHERE COD_CLIENT = @CodClient
+              AND EXISTS (SELECT 1 FROM GVA53 R WHERE R.T_COMP = GVA46.T_COMP AND R.N_COMP = GVA46.N_COMP)
             GROUP BY GVA46.T_COMP, GVA46.N_COMP, GVA46.FECHA_VTO, GVA46.IMPORTE_VT
             HAVING GVA46.IMPORTE_VT + (SUM(ISNULL(IMPORT_CAN,0) * CASE WHEN TIPO_COMP = 'D' THEN 1 ELSE -1 END)) > 0";
 
@@ -510,7 +520,8 @@ public class Worker : BackgroundService
                 tComp = ((string)m.TComp).Trim(),
                 nComp = ((string)m.NComp).Trim(),
                 fechaVto = (DateTime)m.FechaVto,
-                saldo = (decimal)m.Saldo
+                saldo = (decimal)m.Saldo,
+                esCuota = Convert.ToInt32(m.EsCuota) == 1
             }).ToArray();
 
         await PostAsync("/api/sync/cuenta-corriente", new { cuit, movimientos });

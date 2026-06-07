@@ -43,7 +43,7 @@ public class ResumenCuentaController : ControllerBase
         var locked = await GetLockedComprobantesAsync(conn, cuit);
 
         var movimientos = await conn.QueryAsync<ResumenCuentaDto>(
-            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit ORDER BY FechaVto ASC",
+            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo, EsCuota FROM ResumenCuenta WHERE Cuit = @Cuit ORDER BY FechaVto ASC",
             new { Cuit = cuit });
 
         var filtrados = locked.Count == 0
@@ -188,7 +188,7 @@ public class ResumenCuentaController : ControllerBase
 
         using var conn = _dbFactory.CreateConnection();
         var movimientos = (await conn.QueryAsync<ResumenCuentaDto>(
-            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
+            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo, EsCuota FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
             new { Cuit = cuit, request.Ids })).ToList();
 
         if (movimientos.Count == 0)
@@ -200,7 +200,7 @@ public class ResumenCuentaController : ControllerBase
 
         var externalReference = $"PF-{cuit}-{DateTime.UtcNow:yyyyMMddHHmmss}";
         var comprobantesJson = JsonSerializer.Serialize(
-            movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo }));
+            movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo, m.EsCuota }));
         var fechaVencimiento = DateTime.UtcNow.AddDays(30);
 
         conn.Open();
@@ -265,7 +265,7 @@ public class ResumenCuentaController : ControllerBase
 
         using var conn = _dbFactory.CreateConnection();
         var movimientos = (await conn.QueryAsync<ResumenCuentaDto>(
-            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
+            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo, EsCuota FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
             new { Cuit = cuit, request.Ids })).ToList();
 
         if (movimientos.Count == 0)
@@ -279,7 +279,7 @@ public class ResumenCuentaController : ControllerBase
         var frontendBaseUrl = await _mpService.EnsureConfiguradoAsync();
 
         var comprobantesDesc = string.Join(", ", movimientos.Select(m => $"{m.TComp} {m.NComp}"));
-        var comprobantesJson = JsonSerializer.Serialize(movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo }));
+        var comprobantesJson = JsonSerializer.Serialize(movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo, m.EsCuota }));
 
         var client = new PreferenceClient();
         var preferenceRequest = new PreferenceRequest
@@ -630,6 +630,7 @@ public class ResumenCuentaDto
     public string NComp { get; set; } = string.Empty;
     public DateTime FechaVto { get; set; }
     public decimal Saldo { get; set; }
+    public bool EsCuota { get; set; } = true;
 }
 
 public class PagoCuentaCorrienteDto

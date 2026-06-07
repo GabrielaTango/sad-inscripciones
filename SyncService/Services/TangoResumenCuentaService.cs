@@ -77,8 +77,13 @@ public class TangoResumenCuentaService
             var extRef = pago.ExternalReference ?? string.Empty;
 
             // Resolución de cuentas para un recibo de cuenta corriente.
-            //   Haber = cuenta CUOTAS del vendedor del cliente (CA_1118_CTA_CUOTAS).
-            //   Debe  = cuenta caja según medio:
+            //   Haber = rubro acreditado según el concepto de cada comprobante:
+            //     - Cuota societaria → cuenta CUOTAS del vendedor (CA_1118_CTA_CUOTAS).
+            //     - Otro             → cuenta OTRA del vendedor   (CA_1118_CTA_OTRA).
+            //     Fallback a sede central (CuentaHaberPresencialFallback) si el vendedor
+            //     no tiene la cuenta cargada (0). Un pago puede mezclar ambos: se emite
+            //     una línea de Haber por rubro (ver SBA05 Haber más abajo).
+            //   Debe  = cuenta caja según medio (una sola línea por el total):
             //     - PagoFacil → CuentaDebePagoFacil (92 por config).
             //     - MercadoPago (default socio) → CuentaDebeMercadoPago (125).
             //     - Presencial (cobro de capítulo) → CtaTesoreria del cobrador,
@@ -88,24 +93,21 @@ public class TangoResumenCuentaService
             var esPresencial = !esPagoFacil && pago.CtaTesoreria.HasValue && pago.CtaTesoreria.Value > 0;
 
             var cuentaCuotas = await TangoHelpers.TraerCuentaCuotasAsync(conn, tx, codClient);
+            var cuentaOtra = await TangoHelpers.TraerCuentaOtraAsync(conn, tx, codClient);
 
-            decimal cuentaHaberFinal;
+            decimal CuentaHaber(bool esCuota)
+            {
+                var cta = esCuota ? cuentaCuotas : cuentaOtra;
+                return cta == 0 ? CuentaHaberPresencialFallback : cta;
+            }
+
             decimal cuentaDebeFinal;
             if (esPresencial)
-            {
-                cuentaHaberFinal = cuentaCuotas == 0 ? CuentaHaberPresencialFallback : cuentaCuotas;
                 cuentaDebeFinal = pago.CtaTesoreria!.Value;
-            }
             else if (esPagoFacil)
-            {
-                cuentaHaberFinal = cuentaCuotas;
                 cuentaDebeFinal = CuentaDebePagoFacil;
-            }
             else
-            {
-                cuentaHaberFinal = cuentaCuotas;
                 cuentaDebeFinal = CuentaDebeMercadoPago;
-            }
 
             // 2. Crear recibo REC
             var nCompRec = await TangoHelpers.TraerProximoNCompAsync(conn, tx, TalonarioRecibo);
@@ -158,26 +160,50 @@ public class TangoResumenCuentaService
             await conn.ExecuteAsync(sba04.Insert(), transaction: tx);
             await conn.ExecuteAsync(sba04.InsertAsientoComprobante(), transaction: tx);
 
-            // SBA05 Haber
-            var sba05h = new TangoSBA05();
-            sba05h.ConfigurarDH("H");
-            //sba05h.Set("FILLER", extRef);
-            sba05h.Set("N_COMP", nCompRec);
-            sba05h.Set("COD_COMP", "REC");
-            sba05h.SetDecimal("COD_CTA", cuentaHaberFinal);
-            sba05h.SetDecimal("MONTO", pago.Monto);
-            sba05h.SetDecimal("CANT_MONE", pago.Monto);
-            sba05h.SetDecimal("UNIDADES", pago.Monto);
-            sba05h.SetDate("FECHA", now);
-            sba05h.Set("COD_GVA14", codClient);
-            sba05h.SetInt("ID_SBA02", IdSBA02);
-            await conn.ExecuteAsync(sba05h.Insert(), transaction: tx);
-            await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
+            // SBA05 Haber — una línea por rubro (cuotas / otros).
+            // Pago a cuenta (sin comprobantes): no hay concepto, una sola línea a cuotas.
+            // Con comprobantes: se separa el monto por EsCuota. La suma de ambos grupos
+            // es igual a pago.Monto (Monto se calculó como la suma de esos mismos saldos),
+            // así el asiento queda balanceado contra el Debe.
+            var haberLineas = new List<(decimal cuenta, decimal monto)>();
+            if (pagoACuenta)
+            {
+                haberLineas.Add((CuentaHaber(true), pago.Monto));
+            }
+            else
+            {
+                var montoCuotas = comprobantes.Where(c => c.EsCuota).Sum(c => c.Saldo);
+                var montoOtros = comprobantes.Where(c => !c.EsCuota).Sum(c => c.Saldo);
+                if (montoCuotas > 0) haberLineas.Add((CuentaHaber(true), montoCuotas));
+                if (montoOtros > 0) haberLineas.Add((CuentaHaber(false), montoOtros));
+            }
+
+            int renglon = 0;
+
+            foreach (var (cuenta, monto) in haberLineas)
+            {
+                var sba05h = new TangoSBA05();
+                sba05h.ConfigurarDH("H");
+                sba05h.SetInt("RENGLON", renglon);
+                sba05h.Set("N_COMP", nCompRec);
+                sba05h.Set("COD_COMP", "REC");
+                sba05h.SetDecimal("COD_CTA", cuenta);
+                sba05h.SetDecimal("MONTO", monto);
+                sba05h.SetDecimal("CANT_MONE", monto);
+                sba05h.SetDecimal("UNIDADES", monto);
+                sba05h.SetDate("FECHA", now);
+                sba05h.Set("COD_GVA14", codClient);
+                sba05h.SetInt("ID_SBA02", IdSBA02);
+                await conn.ExecuteAsync(sba05h.Insert(), transaction: tx);
+                await conn.ExecuteAsync(sba05h.UpdateSBA01(), transaction: tx);
+                renglon++;
+            }
 
             // SBA05 Debe
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
             //sba05d.Set("FILLER", extRef);
+            sba05d.SetInt("RENGLON", renglon);
             sba05d.Set("N_COMP", nCompRec);
             sba05d.Set("COD_COMP", "REC");
             sba05d.SetDecimal("COD_CTA", cuentaDebeFinal);

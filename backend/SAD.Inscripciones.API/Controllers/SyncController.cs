@@ -494,9 +494,9 @@ public class SyncController : ControllerBase
         if (dto.Movimientos?.Length > 0)
         {
             await conn.ExecuteAsync(@"
-                INSERT INTO ResumenCuenta (Cuit, TComp, NComp, FechaVto, Saldo)
-                VALUES (@Cuit, @TComp, @NComp, @FechaVto, @Saldo)",
-                dto.Movimientos.Select(m => new { dto.Cuit, m.TComp, m.NComp, m.FechaVto, m.Saldo }), tx);
+                INSERT INTO ResumenCuenta (Cuit, TComp, NComp, FechaVto, Saldo, EsCuota)
+                VALUES (@Cuit, @TComp, @NComp, @FechaVto, @Saldo, @EsCuota)",
+                dto.Movimientos.Select(m => new { dto.Cuit, m.TComp, m.NComp, m.FechaVto, m.Saldo, m.EsCuota }), tx);
         }
 
         tx.Commit();
@@ -549,6 +549,7 @@ public class SyncMovimientoDto
     public string NComp { get; set; } = string.Empty;
     public DateTime FechaVto { get; set; }
     public decimal Saldo { get; set; }
+    public bool EsCuota { get; set; } = true;
 }
 
 public class SyncInscripcionDto
