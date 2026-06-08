@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
+using SAD.Inscripciones.API.Services;
 using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
@@ -49,7 +50,7 @@ public class MercadoPagoWebhookController : ControllerBase
             return Ok();
         }
 
-        if (!int.TryParse(paymentInfo.ExternalReference, out var inscripcionId))
+        if (!ExternalReferenceHelper.TryParseInscripcionId(paymentInfo.ExternalReference, out var inscripcionId))
         {
             _logger.LogWarning("ExternalReference invalida: {Ref}", paymentInfo.ExternalReference);
             return Ok();

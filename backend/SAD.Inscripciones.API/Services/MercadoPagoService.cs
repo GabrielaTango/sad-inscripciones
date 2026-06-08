@@ -124,7 +124,7 @@ public class MercadoPagoService : IMercadoPagoService
                 Installments = cuotas,
             },
             AutoReturn = "approved",
-            ExternalReference = inscripcion.Id.ToString(),
+            ExternalReference = ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef),
         };
 
         _logger.LogInformation("Creando preferencia MP para inscripcion {Id}, monto {Monto} ARS",

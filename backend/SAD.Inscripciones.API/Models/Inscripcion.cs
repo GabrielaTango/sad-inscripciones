@@ -30,4 +30,6 @@ public class Inscripcion : BaseEntity
     public string? Institucion { get; set; }
     public string? Sector { get; set; }
     public bool SincronizadoTango { get; set; }
+    // Token único usado en el external_reference de MercadoPago (ver ExternalReferenceHelper).
+    public string? PublicRef { get; set; }
 }

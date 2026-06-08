@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck, CalendarOff } from 'lucide-react'
+import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck, CalendarOff, AlertCircle } from 'lucide-react'
 import { eventosService } from '../services/eventosService'
 import { eventoPreciosService } from '../services/eventoPreciosService'
 import { tiposAlumnoService } from '../services/tiposAlumnoService'
@@ -56,6 +56,9 @@ const InscripcionPage = () => {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  // Se incrementa en cada submit con errores para disparar el scroll al primer campo invalido.
+  const [scrollTick, setScrollTick] = useState(0)
   const [becaValida, setBecaValida] = useState<boolean | null>(null)
   const [cuponesDisponibles, setCuponesDisponibles] = useState<PromocionCuponDisponible[]>([])
   const [aceptaTerminos, setAceptaTerminos] = useState(false)
@@ -67,6 +70,10 @@ const InscripcionPage = () => {
 
   // Estado post-inscripcion
   const [sinCosto, setSinCosto] = useState(false)
+
+  // Guard sincronico contra doble click: setSubmitting (estado) recien deshabilita el
+  // boton en el proximo render, asi que dos clicks muy rapidos podrian disparar dos POST.
+  const submittingRef = useRef(false)
 
   const [form, setForm] = useState<InscripcionForm>({
     eventoId: id, tipoAlumnoId: 0, nombre: '', apellido: '',
@@ -221,6 +228,15 @@ const InscripcionPage = () => {
     return () => clearTimeout(timer)
   }, [form.documento, isAuthenticated])
 
+  // Al enviar con errores, lleva el foco/scroll al primer campo invalido (primero en el DOM).
+  useEffect(() => {
+    if (scrollTick === 0) return
+    const el = document.querySelector<HTMLElement>('.border-red-500')
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.focus({ preventScroll: true })
+  }, [scrollTick])
+
   const handleValidarBeca = async () => {
     if (!form.codigoBeca) return
     try {
@@ -231,7 +247,68 @@ const InscripcionPage = () => {
     }
   }
 
+  // Campos obligatorios del formulario. Beca y Cupon quedan opcionales por diseño.
+  const camposRequeridos: { key: keyof InscripcionForm; label: string }[] = [
+    { key: 'documento', label: 'Documento' },
+    { key: 'apellido', label: 'Apellido' },
+    { key: 'nombre', label: 'Nombres' },
+    { key: 'tipoAlumnoId', label: 'Categoria' },
+    { key: 'fechaNacimiento', label: 'Fecha de Nacimiento' },
+    { key: 'domicilio', label: 'Domicilio' },
+    { key: 'codigoPostal', label: 'Codigo Postal' },
+    { key: 'localidad', label: 'Localidad' },
+    { key: 'provincia', label: 'Provincia' },
+    { key: 'pais', label: 'Pais' },
+    { key: 'telefono', label: 'Telefono' },
+    { key: 'celular', label: 'Celular' },
+    { key: 'email', label: 'Email' },
+    { key: 'profesion', label: 'Profesion' },
+    { key: 'especialidad', label: 'Especialidad' },
+    { key: 'institucion', label: 'Institucion' },
+    { key: 'sector', label: 'Sector / Servicio' },
+  ]
+
+  // Valida los campos obligatorios y devuelve true si esta todo OK.
+  const validar = (): boolean => {
+    const next: Record<string, string> = {}
+    for (const f of camposRequeridos) {
+      const v = form[f.key]
+      const vacio = f.key === 'tipoAlumnoId' ? !v : !String(v ?? '').trim()
+      if (vacio) next[f.key] = 'Este campo es obligatorio'
+    }
+    if (!next.email && form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      next.email = 'Email invalido'
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
+  // Actualiza un campo del form y limpia su error inline (validacion al enviar, se
+  // limpia a medida que el usuario corrige).
+  const setField = (key: keyof InscripcionForm, value: string | number) => {
+    setForm(prev => ({ ...prev, [key]: value }))
+    setErrors(prev => (prev[key] ? { ...prev, [key]: '' } : prev))
+  }
+
+  // className del input/select agregando borde rojo si el campo tiene error.
+  const cls = (key: string, base: string) => (errors[key] ? `${base} border-red-500` : base)
+
+  // Mensaje de error inline debajo del campo.
+  const errorMsg = (key: string) =>
+    errors[key] ? (
+      <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+        <AlertCircle size={14} />
+        {errors[key]}
+      </p>
+    ) : null
+
   const handleSubmit = async (cuotas: number) => {
+    if (!validar()) {
+      setScrollTick(t => t + 1)
+      return
+    }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true); setError('')
     try {
       const result = await inscripcionesService.create({ ...form, cuotas, modalidadPago })
@@ -249,7 +326,7 @@ const InscripcionPage = () => {
         return
       }
       setError(msg)
-    } finally { setSubmitting(false) }
+    } finally { submittingRef.current = false; setSubmitting(false) }
   }
 
   if (loading) return <div className="text-center py-16"><div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>
@@ -342,19 +419,22 @@ const InscripcionPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-4">
                         <label className="form-label">Documento *</label>
-                        <input type="text" className="form-input" value={form.documento} onChange={(e) => setForm({ ...form, documento: e.target.value })} required readOnly={socioDataCargada} />
+                        <input type="text" className={cls('documento', 'form-input')} value={form.documento} onChange={(e) => setField('documento', e.target.value)} readOnly={socioDataCargada} />
+                        {errorMsg('documento')}
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Apellido *</label>
-                        <input type="text" className="form-input" value={form.apellido} onChange={(e) => setForm({ ...form, apellido: e.target.value })} required readOnly={socioDataCargada} />
+                        <input type="text" className={cls('apellido', 'form-input')} value={form.apellido} onChange={(e) => setField('apellido', e.target.value)} readOnly={socioDataCargada} />
+                        {errorMsg('apellido')}
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Nombres *</label>
-                        <input type="text" className="form-input" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required readOnly={socioDataCargada} />
+                        <input type="text" className={cls('nombre', 'form-input')} value={form.nombre} onChange={(e) => setField('nombre', e.target.value)} readOnly={socioDataCargada} />
+                        {errorMsg('nombre')}
                       </div>
                       <div className="md:col-span-6">
                         <label className="form-label">Categoria *</label>
-                        <select className="form-select" value={form.tipoAlumnoId} onChange={(e) => setForm({ ...form, tipoAlumnoId: Number(e.target.value) })} required>
+                        <select className={cls('tipoAlumnoId', 'form-select')} value={form.tipoAlumnoId} onChange={(e) => setField('tipoAlumnoId', Number(e.target.value))}>
                           <option value={0}>Seleccionar...</option>
                           {preciosFiltrados.map(p => (
                             <option key={p.tipoAlumnoId} value={p.tipoAlumnoId}>
@@ -362,10 +442,12 @@ const InscripcionPage = () => {
                             </option>
                           ))}
                         </select>
+                        {errorMsg('tipoAlumnoId')}
                       </div>
                       <div className="md:col-span-6">
-                        <label className="form-label">Fecha de Nacimiento</label>
-                        <input type="date" className="form-input" value={form.fechaNacimiento || ''} onChange={(e) => setForm({ ...form, fechaNacimiento: e.target.value })} />
+                        <label className="form-label">Fecha de Nacimiento *</label>
+                        <input type="date" className={cls('fechaNacimiento', 'form-input')} value={form.fechaNacimiento || ''} onChange={(e) => setField('fechaNacimiento', e.target.value)} />
+                        {errorMsg('fechaNacimiento')}
                       </div>
 
                       {selectedPrecio && selectedPrecio.permiteDescuento && (
@@ -382,20 +464,23 @@ const InscripcionPage = () => {
                     <div className="border-t border-slate-200 mb-3"></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-12">
-                        <label className="form-label">Domicilio</label>
-                        <input type="text" className="form-input" value={form.domicilio || ''} onChange={(e) => setForm({ ...form, domicilio: e.target.value })} />
+                        <label className="form-label">Domicilio *</label>
+                        <input type="text" className={cls('domicilio', 'form-input')} value={form.domicilio || ''} onChange={(e) => setField('domicilio', e.target.value)} />
+                        {errorMsg('domicilio')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Codigo Postal</label>
-                        <input type="text" className="form-input" value={form.codigoPostal || ''} onChange={(e) => setForm({ ...form, codigoPostal: e.target.value })} />
+                        <label className="form-label">Codigo Postal *</label>
+                        <input type="text" className={cls('codigoPostal', 'form-input')} value={form.codigoPostal || ''} onChange={(e) => setField('codigoPostal', e.target.value)} />
+                        {errorMsg('codigoPostal')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Localidad</label>
-                        <input type="text" className="form-input" maxLength={20} value={form.localidad || ''} onChange={(e) => setForm({ ...form, localidad: e.target.value })} />
+                        <label className="form-label">Localidad *</label>
+                        <input type="text" className={cls('localidad', 'form-input')} maxLength={20} value={form.localidad || ''} onChange={(e) => setField('localidad', e.target.value)} />
+                        {errorMsg('localidad')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Provincia</label>
-                        <select className="form-select" value={form.provincia || ''} onChange={(e) => setForm({ ...form, provincia: e.target.value })}>
+                        <label className="form-label">Provincia *</label>
+                        <select className={cls('provincia', 'form-select')} value={form.provincia || ''} onChange={(e) => setField('provincia', e.target.value)}>
                           <option value="">Seleccionar...</option>
                           {provincias.map(p => (
                             <option key={p.codProvin} value={p.codProvin}>
@@ -403,22 +488,27 @@ const InscripcionPage = () => {
                             </option>
                           ))}
                         </select>
+                        {errorMsg('provincia')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Pais</label>
-                        <input type="text" className="form-input" value={form.pais || ''} onChange={(e) => setForm({ ...form, pais: e.target.value })} />
+                        <label className="form-label">Pais *</label>
+                        <input type="text" className={cls('pais', 'form-input')} value={form.pais || ''} onChange={(e) => setField('pais', e.target.value)} />
+                        {errorMsg('pais')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Telefono</label>
-                        <input type="tel" className="form-input" value={form.telefono || ''} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
+                        <label className="form-label">Telefono *</label>
+                        <input type="tel" className={cls('telefono', 'form-input')} value={form.telefono || ''} onChange={(e) => setField('telefono', e.target.value)} />
+                        {errorMsg('telefono')}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="form-label">Celular</label>
-                        <input type="tel" className="form-input" value={form.celular || ''} onChange={(e) => setForm({ ...form, celular: e.target.value })} />
+                        <label className="form-label">Celular *</label>
+                        <input type="tel" className={cls('celular', 'form-input')} value={form.celular || ''} onChange={(e) => setField('celular', e.target.value)} />
+                        {errorMsg('celular')}
                       </div>
                       <div className="md:col-span-12">
                         <label className="form-label">Email *</label>
-                        <input type="email" className="form-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                        <input type="email" className={cls('email', 'form-input')} value={form.email} onChange={(e) => setField('email', e.target.value)} />
+                        {errorMsg('email')}
                       </div>
                     </div>
 
@@ -427,12 +517,14 @@ const InscripcionPage = () => {
                     <div className="border-t border-slate-200 mb-3"></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-6">
-                        <label className="form-label">Profesion</label>
-                        <input type="text" className="form-input" value={form.profesion || ''} onChange={(e) => setForm({ ...form, profesion: e.target.value })} />
+                        <label className="form-label">Profesion *</label>
+                        <input type="text" className={cls('profesion', 'form-input')} value={form.profesion || ''} onChange={(e) => setField('profesion', e.target.value)} />
+                        {errorMsg('profesion')}
                       </div>
                       <div className="md:col-span-6">
-                        <label className="form-label">Especialidad</label>
-                        <input type="text" className="form-input" value={form.especialidad || ''} onChange={(e) => setForm({ ...form, especialidad: e.target.value })} />
+                        <label className="form-label">Especialidad *</label>
+                        <input type="text" className={cls('especialidad', 'form-input')} value={form.especialidad || ''} onChange={(e) => setField('especialidad', e.target.value)} />
+                        {errorMsg('especialidad')}
                       </div>
                     </div>
 
@@ -441,12 +533,14 @@ const InscripcionPage = () => {
                     <div className="border-t border-slate-200 mb-3"></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-6">
-                        <label className="form-label">Institucion</label>
-                        <input type="text" className="form-input" value={form.institucion || ''} onChange={(e) => setForm({ ...form, institucion: e.target.value })} />
+                        <label className="form-label">Institucion *</label>
+                        <input type="text" className={cls('institucion', 'form-input')} value={form.institucion || ''} onChange={(e) => setField('institucion', e.target.value)} />
+                        {errorMsg('institucion')}
                       </div>
                       <div className="md:col-span-6">
-                        <label className="form-label">Sector / Servicio</label>
-                        <input type="text" className="form-input" value={form.sector || ''} onChange={(e) => setForm({ ...form, sector: e.target.value })} />
+                        <label className="form-label">Sector / Servicio *</label>
+                        <input type="text" className={cls('sector', 'form-input')} value={form.sector || ''} onChange={(e) => setField('sector', e.target.value)} />
+                        {errorMsg('sector')}
                       </div>
                     </div>
 
@@ -519,13 +613,13 @@ const InscripcionPage = () => {
                             </div>
 
                             {modalidadPago === 'unico' && (
-                              <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
+                              <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
                                 {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />Pagar ${selectedPrecio.precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
                               </button>
                             )}
 
                             {modalidadPago === 'cuotas' && selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
-                              <button type="button" className="btn-outline-primary btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(selectedPrecio.cantidadCuotas || 6)}>
+                              <button type="button" className="btn-outline-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(selectedPrecio.cantidadCuotas || 6)}>
                                 {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />{selectedPrecio.cantidadCuotas || 6} cuotas de ${(selectedPrecio.precioCuotas / (selectedPrecio.cantidadCuotas || 6)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
                               </button>
                             )}
@@ -535,7 +629,7 @@ const InscripcionPage = () => {
                             )}
 
                             {modalidadPago === 'reserva' && (
-                              <button type="button" className="btn-accent btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
+                              <button type="button" className="btn-accent btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
                                 {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><BookmarkCheck className="inline mr-2" size={18} />Reservar vacante por ${Math.round(selectedPrecio.precioBase * 0.3).toLocaleString('es-AR')}</>}
                               </button>
                             )}
@@ -548,7 +642,7 @@ const InscripcionPage = () => {
                             </div>
                           </>
                         ) : (
-                          <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || !form.tipoAlumnoId || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
+                          <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
                             {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><Send className="inline mr-2" size={18} />Inscribirse</>}
                           </button>
                         )}

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.DTOs;
+using SAD.Inscripciones.API.Services;
 using SAD.Inscripciones.API.Services.Interfaces;
 
 namespace SAD.Inscripciones.API.Controllers;
@@ -217,7 +218,8 @@ public class InscripcionesController : ControllerBase
         // Si sigue pendiente o reservada, consultar a MP por si ya se pagó
         if (inscripcion.Estado == "Pendiente" || inscripcion.Estado == "Reservada")
         {
-            var paymentInfo = await _mercadoPagoService.BuscarPagoPorReferenciaAsync(id.ToString());
+            var paymentInfo = await _mercadoPagoService.BuscarPagoPorReferenciaAsync(
+                ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef));
             if (paymentInfo != null && paymentInfo.Status == "approved")
             {
                 string nuevoEstado;
@@ -265,10 +267,10 @@ public class InscripcionesController : ControllerBase
         // Resolver inscripcionId: preferimos el externalReference enviado por MP en la query;
         // si no vino, consultamos MP por paymentId.
         int inscripcionId;
-        if (!int.TryParse(dto.ExternalReference, out inscripcionId))
+        if (!ExternalReferenceHelper.TryParseInscripcionId(dto.ExternalReference, out inscripcionId))
         {
             var paymentInfo = await _mercadoPagoService.ObtenerInfoPagoAsync(dto.PaymentId);
-            if (paymentInfo == null || !int.TryParse(paymentInfo.ExternalReference, out inscripcionId))
+            if (paymentInfo == null || !ExternalReferenceHelper.TryParseInscripcionId(paymentInfo.ExternalReference, out inscripcionId))
                 return BadRequest(new { error = "Referencia de inscripción inválida." });
         }
 

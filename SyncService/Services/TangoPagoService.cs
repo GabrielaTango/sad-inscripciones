@@ -99,6 +99,7 @@ public class TangoPagoService
             var sba05h = new TangoSBA05();
             sba05h.ConfigurarDH("H");
             sba05h.Set("FILLER", inscId);
+            sba05h.SetInt("RENGLON", 0);
             sba05h.Set("N_COMP", nComp);
             sba05h.Set("COD_COMP", "REC");
             sba05h.SetDecimal("COD_CTA", cuentaOtra);
@@ -115,6 +116,7 @@ public class TangoPagoService
             // 6. SBA05 Debe: cuenta caja Mercado Pago (config).
             var sba05d = new TangoSBA05();
             sba05d.ConfigurarDH("D");
+            sba05d.SetInt("RENGLON", 1);
             sba05d.Set("FILLER", inscId);
             sba05d.Set("N_COMP", nComp);
             sba05d.Set("COD_COMP", "REC");

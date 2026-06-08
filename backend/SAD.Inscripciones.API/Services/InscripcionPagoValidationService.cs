@@ -39,7 +39,8 @@ public class InscripcionPagoValidationService : IInscripcionPagoValidationServic
             ?? throw new ArgumentException($"Inscripcion {inscripcionId} no encontrada", nameof(inscripcionId));
 
         var estadoAnterior = inscripcion.Estado;
-        var mpPagos = await _mpService.BuscarTodosPagosPorReferenciaAsync(inscripcionId.ToString());
+        var mpPagos = await _mpService.BuscarTodosPagosPorReferenciaAsync(
+            ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef));
 
         var existentes = (await _pagoRepository.GetByInscripcionIdAsync(inscripcionId))
             .Where(p => p.DeletedAt == null)

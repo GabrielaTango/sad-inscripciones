@@ -71,11 +71,11 @@ public class InscripcionRepository : IInscripcionRepository
         const string sql = @"
             INSERT INTO Inscripciones (EventoId, TipoAlumnoId, Nombre, Apellido, Email, Telefono, Documento, Provincia,
                 PrecioBase, DescuentoAplicado, PrecioFinal, PrecioFinalCuotas, CantidadCuotas, MontoReserva, Estado, Observaciones, FechaInscripcion,
-                FechaNacimiento, Domicilio, CodigoPostal, Localidad, Pais, Celular, Profesion, Especialidad, Institucion, Sector,
+                FechaNacimiento, Domicilio, CodigoPostal, Localidad, Pais, Celular, Profesion, Especialidad, Institucion, Sector, PublicRef,
                 CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
             VALUES (@EventoId, @TipoAlumnoId, @Nombre, @Apellido, @Email, @Telefono, @Documento, @Provincia,
                 @PrecioBase, @DescuentoAplicado, @PrecioFinal, @PrecioFinalCuotas, @CantidadCuotas, @MontoReserva, @Estado, @Observaciones, @FechaInscripcion,
-                @FechaNacimiento, @Domicilio, @CodigoPostal, @Localidad, @Pais, @Celular, @Profesion, @Especialidad, @Institucion, @Sector,
+                @FechaNacimiento, @Domicilio, @CodigoPostal, @Localidad, @Pais, @Celular, @Profesion, @Especialidad, @Institucion, @Sector, @PublicRef,
                 @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
 
@@ -108,9 +108,13 @@ public class InscripcionRepository : IInscripcionRepository
     public async Task<bool> UpdateEstadoAsync(int id, string estado, string updatedBy)
     {
         using var connection = _dbFactory.CreateConnection();
+        // Transición atómica: solo cambia (y devuelve true) si el estado es distinto al actual.
+        // Bajo concurrencia (StrictMode / webhook+confirm), el lock de fila serializa los UPDATE:
+        // solo el primero cambia la fila; el resto matchea 0 filas → false → el caller no repite
+        // los side-effects (mail, cupones).
         const string sql = @"
             UPDATE Inscripciones SET Estado = @Estado, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
-            WHERE Id = @Id AND DeletedAt IS NULL";
+            WHERE Id = @Id AND DeletedAt IS NULL AND Estado <> @Estado";
         return await connection.ExecuteAsync(sql, new { Id = id, Estado = estado, UpdatedBy = updatedBy }) > 0;
     }
 
