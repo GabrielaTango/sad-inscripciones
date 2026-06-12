@@ -9,6 +9,17 @@ export interface InscripcionCreateResult {
   initPoint: string | null
   preferenceId?: string
   message?: string
+  paypal?: boolean
+  montoUsd?: number
+  moneda?: string
+}
+
+export interface ConfirmarPagoPayPalResult {
+  inscripcionId: number
+  estadoInscripcion: string
+  estadoPago: string
+  transactionAmount: number
+  currency: string
 }
 
 export interface EstadoPagoResult {
@@ -58,6 +69,8 @@ export const inscripcionesService = {
   getEstadoPago: (id: number) => api.get<EstadoPagoResult>(`${BASE}/${id}/estado-pago`),
   confirmarPago: (paymentId: number, externalReference?: string) =>
     api.post<ConfirmarPagoResult>(`${BASE}/confirmar-pago`, { paymentId, externalReference }),
+  confirmarPagoPayPal: (inscripcionId: number, orderId: string, monto: number, observaciones?: string) =>
+    api.post<ConfirmarPagoPayPalResult>(`${BASE}/confirmar-pago-paypal`, { inscripcionId, orderId, monto, observaciones }),
   updateEstado: (id: number, estado: string) => api.patch<void>(`${BASE}/${id}/estado`, { estado }),
   remove: (id: number) => api.delete<void>(`${BASE}/${id}`),
   countPendientes: () => api.get<{ count: number }>(`${BASE}/pendientes/count`),

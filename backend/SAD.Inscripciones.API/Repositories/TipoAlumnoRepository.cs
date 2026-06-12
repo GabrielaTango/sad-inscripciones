@@ -39,8 +39,8 @@ public class TipoAlumnoRepository : ITipoAlumnoRepository
     {
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
-            INSERT INTO TiposAlumno (Nombre, Activo, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
-            VALUES (@Nombre, @Activo, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+            INSERT INTO TiposAlumno (Nombre, Activo, Extranjero, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
+            VALUES (@Nombre, @Activo, @Extranjero, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
         return await connection.ExecuteScalarAsync<int>(sql, entity);
     }
@@ -50,7 +50,7 @@ public class TipoAlumnoRepository : ITipoAlumnoRepository
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
             UPDATE TiposAlumno
-            SET Nombre = @Nombre, Activo = @Activo, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
+            SET Nombre = @Nombre, Activo = @Activo, Extranjero = @Extranjero, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
             WHERE Id = @Id AND DeletedAt IS NULL";
         return await connection.ExecuteAsync(sql, entity) > 0;
     }

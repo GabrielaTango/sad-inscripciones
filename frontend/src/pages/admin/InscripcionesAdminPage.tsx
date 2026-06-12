@@ -92,7 +92,7 @@ const InscripcionesAdminPage = () => {
     { key: 'nombre', label: 'Nombre', render: (i: Inscripcion) => `${i.nombre} ${i.apellido}` },
     { key: 'documento', label: 'Documento', render: (i: Inscripcion) => i.documento || '-' },
     { key: 'email', label: 'Email' },
-    { key: 'precioFinal', label: 'Precio', render: (i: Inscripcion) => `$${i.precioFinal.toFixed(2)}` },
+    { key: 'precioFinal', label: 'Precio', render: (i: Inscripcion) => i.extranjero && i.montoDolares ? `USD ${i.montoDolares.toFixed(2)}` : `$${i.precioFinal.toFixed(2)}` },
     { key: 'estado', label: 'Estado', render: (i: Inscripcion) => <span className={`badge ${estadoBadge(i.estado)}`}>{i.estado}</span> },
     { key: 'fechaInscripcion', label: 'Fecha', render: (i: Inscripcion) => new Date(i.fechaInscripcion).toLocaleDateString('es-AR') },
     { key: 'sincronizadoTango', label: 'Tango', render: (i: Inscripcion) => i.sincronizadoTango ? <span className="badge bg-green-100 text-green-700">Si</span> : <span className="badge bg-gray-100 text-gray-700">No</span> },

@@ -49,8 +49,8 @@ public class EventoPrecioRepository : IEventoPrecioRepository
     {
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
-            INSERT INTO EventoPrecios (EventoId, TipoAlumnoId, ArticuloCodigo, PrecioBase, PrecioCuotas, CantidadCuotas, PermiteDescuento, Activo, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
-            VALUES (@EventoId, @TipoAlumnoId, @ArticuloCodigo, @PrecioBase, @PrecioCuotas, @CantidadCuotas, @PermiteDescuento, @Activo, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+            INSERT INTO EventoPrecios (EventoId, TipoAlumnoId, ArticuloCodigo, PrecioBase, PrecioDolares, PrecioCuotas, CantidadCuotas, PermiteDescuento, Activo, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
+            VALUES (@EventoId, @TipoAlumnoId, @ArticuloCodigo, @PrecioBase, @PrecioDolares, @PrecioCuotas, @CantidadCuotas, @PermiteDescuento, @Activo, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
         return await connection.ExecuteScalarAsync<int>(sql, entity);
     }
@@ -61,7 +61,7 @@ public class EventoPrecioRepository : IEventoPrecioRepository
         const string sql = @"
             UPDATE EventoPrecios
             SET EventoId = @EventoId, TipoAlumnoId = @TipoAlumnoId, ArticuloCodigo = @ArticuloCodigo,
-                PrecioBase = @PrecioBase, PrecioCuotas = @PrecioCuotas, CantidadCuotas = @CantidadCuotas,
+                PrecioBase = @PrecioBase, PrecioDolares = @PrecioDolares, PrecioCuotas = @PrecioCuotas, CantidadCuotas = @CantidadCuotas,
                 PermiteDescuento = @PermiteDescuento, Activo = @Activo,
                 UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
             WHERE Id = @Id AND DeletedAt IS NULL";

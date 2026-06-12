@@ -25,6 +25,23 @@ internal static class TangoHelpers
         return $"UPDATE GVA43 SET PROXIMO = '{encrypted}' WHERE TALONARIO = {talonario}";
     }
 
+    /// <summary>
+    /// Cotización vigente de una moneda en Tango (la más reciente).
+    /// codMoneda/codTipoCotizacion son parametrizables (default 'DOL' / 'COTIZACIÓN').
+    /// Devuelve null si no hay cotización cargada para esa moneda/tipo.
+    /// </summary>
+    public static async Task<decimal?> TraerCotizacionAsync(
+        SqlConnection conn, SqlTransaction tx, string codMoneda, string codTipoCotizacion)
+    {
+        return await conn.QueryFirstOrDefaultAsync<decimal?>(@"
+            SELECT TOP (1) COTIZACION FROM COTIZACION
+            INNER JOIN TIPO_COTIZACION TC ON TC.ID_TIPO_COTIZACION = COTIZACION.ID_TIPO_COTIZACION
+            INNER JOIN MONEDA ON MONEDA.ID_MONEDA = COTIZACION.ID_MONEDA
+            WHERE COD_MONEDA = @CodMoneda AND TC.COD_TIPO_COTIZACION = @CodTipoCotizacion
+            ORDER BY FECHA_HORA DESC",
+            new { CodMoneda = codMoneda, CodTipoCotizacion = codTipoCotizacion }, tx);
+    }
+
     public static async Task<int> TraerProximoNInternoAsync(SqlConnection conn, SqlTransaction tx)
     {
         var max = await conn.QueryFirstOrDefaultAsync<decimal?>(

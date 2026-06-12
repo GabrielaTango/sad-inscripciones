@@ -40,8 +40,8 @@ public class PagoRepository : IPagoRepository
     {
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
-            INSERT INTO Pagos (InscripcionId, MedioPago, EstadoPago, Monto, ReferenciaExterna, FechaPago, Observaciones, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
-            VALUES (@InscripcionId, @MedioPago, @EstadoPago, @Monto, @ReferenciaExterna, @FechaPago, @Observaciones, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+            INSERT INTO Pagos (InscripcionId, MedioPago, EstadoPago, Monto, Moneda, ReferenciaExterna, FechaPago, Observaciones, CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
+            VALUES (@InscripcionId, @MedioPago, @EstadoPago, @Monto, @Moneda, @ReferenciaExterna, @FechaPago, @Observaciones, @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
         return await connection.ExecuteScalarAsync<int>(sql, entity);
     }
@@ -51,7 +51,7 @@ public class PagoRepository : IPagoRepository
         using var connection = _dbFactory.CreateConnection();
         const string sql = @"
             UPDATE Pagos
-            SET MedioPago = @MedioPago, EstadoPago = @EstadoPago, Monto = @Monto,
+            SET MedioPago = @MedioPago, EstadoPago = @EstadoPago, Monto = @Monto, Moneda = @Moneda,
                 ReferenciaExterna = @ReferenciaExterna, FechaPago = @FechaPago,
                 Observaciones = @Observaciones, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
             WHERE Id = @Id AND DeletedAt IS NULL";

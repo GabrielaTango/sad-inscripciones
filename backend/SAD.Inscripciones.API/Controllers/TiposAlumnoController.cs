@@ -39,6 +39,7 @@ public class TiposAlumnoController : ControllerBase
         {
             Nombre = dto.Nombre,
             Activo = dto.Activo,
+            Extranjero = dto.Extranjero,
             CreatedBy = GetCurrentUser(),
             UpdatedBy = GetCurrentUser()
         };
@@ -56,6 +57,7 @@ public class TiposAlumnoController : ControllerBase
             Id = id,
             Nombre = dto.Nombre,
             Activo = dto.Activo,
+            Extranjero = dto.Extranjero,
             UpdatedBy = GetCurrentUser()
         };
         await _service.UpdateAsync(entity);

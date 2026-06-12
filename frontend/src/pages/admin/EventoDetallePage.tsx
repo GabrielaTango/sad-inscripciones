@@ -60,7 +60,7 @@ const EventoDetallePage = () => {
   const [editId, setEditId] = useState<number | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const [precioForm, setPrecioForm] = useState<EventoPrecioForm>({ eventoId, tipoAlumnoId: 0, precioBase: 0, precioCuotas: null, cantidadCuotas: 6, permiteDescuento: true, activo: true })
+  const [precioForm, setPrecioForm] = useState<EventoPrecioForm>({ eventoId, tipoAlumnoId: 0, precioBase: 0, precioDolares: null, precioCuotas: null, cantidadCuotas: 6, permiteDescuento: true, activo: true })
   const [beneficioForm, setBeneficioForm] = useState<EventoProvinciaBeneficioForm>({ eventoId, provinciaCodigo: '', aplicaPrecioSocio: false, porcentajeDescuento: 0, activo: true })
   const [regaloForm, setRegaloForm] = useState<EventoArticuloRegaloForm>({ eventoId, tipoAlumnoId: 0, articuloCodigo: '', cantidad: 1, activo: true })
   const [becaForm, setBecaForm] = useState<BecaEventoForm>({ eventoId, nombreCampana: '', tipoDescuento: 'Porcentaje', valor: 0, cantidadTotalCodigos: 1, acumulable: false, activo: true })
@@ -169,7 +169,7 @@ const EventoDetallePage = () => {
 
   const openCreate = () => {
     setEditId(null); setError('')
-    if (tab === 'precios') { setPrecioForm({ eventoId, tipoAlumnoId: 0, precioBase: 0, precioCuotas: null, cantidadCuotas: 6, permiteDescuento: true, activo: true }); setPrecioArticuloSelected(null) }
+    if (tab === 'precios') { setPrecioForm({ eventoId, tipoAlumnoId: 0, precioBase: 0, precioDolares: null, precioCuotas: null, cantidadCuotas: 6, permiteDescuento: true, activo: true }); setPrecioArticuloSelected(null) }
     if (tab === 'beneficios') setBeneficioForm({ eventoId, provinciaCodigo: '', aplicaPrecioSocio: false, porcentajeDescuento: 0, activo: true })
     if (tab === 'regalos') { setRegaloForm({ eventoId, tipoAlumnoId: 0, articuloCodigo: '', cantidad: 1, activo: true }); setRegaloArticuloSelected(null) }
     if (tab === 'becas') setBecaForm({ eventoId, nombreCampana: '', tipoDescuento: 'Porcentaje', valor: 0, cantidadTotalCodigos: 1, acumulable: false, activo: true })
@@ -183,7 +183,8 @@ const EventoDetallePage = () => {
           <select className="form-select" value={precioForm.tipoAlumnoId} onChange={e => setPrecioForm({ ...precioForm, tipoAlumnoId: Number(e.target.value) })} required>
             <option value={0}>Seleccionar...</option>{tiposAlumno.filter(t => t.activo).map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select></div>
-        <div className="md:col-span-6"><label className="form-label">Precio 1 Pago *</label><input type="number" step="0.01" className="form-input" value={precioForm.precioBase} onChange={e => setPrecioForm({ ...precioForm, precioBase: Number(e.target.value) })} required /></div>
+        <div className="md:col-span-3"><label className="form-label">Precio 1 Pago *</label><input type="number" step="0.01" className="form-input" value={precioForm.precioBase} onChange={e => setPrecioForm({ ...precioForm, precioBase: Number(e.target.value) })} required /></div>
+        <div className="md:col-span-3"><label className="form-label">Precio USD (extranjeros)</label><input type="number" step="0.01" className="form-input" value={precioForm.precioDolares ?? ''} onChange={e => setPrecioForm({ ...precioForm, precioDolares: e.target.value ? Number(e.target.value) : null })} placeholder="Se cobra por PayPal" /></div>
         <div className="md:col-span-4"><label className="form-label">Precio Total Cuotas</label><input type="number" step="0.01" className="form-input" value={precioForm.precioCuotas ?? ''} onChange={e => setPrecioForm({ ...precioForm, precioCuotas: e.target.value ? Number(e.target.value) : null })} /></div>
         <div className="md:col-span-2"><label className="form-label">Cant. Cuotas</label><input type="number" className="form-input" value={precioForm.cantidadCuotas} onChange={e => setPrecioForm({ ...precioForm, cantidadCuotas: Number(e.target.value) || 6 })} /></div>
         <div className="md:col-span-12"><label className="form-label">Articulo</label>
@@ -259,9 +260,10 @@ const EventoDetallePage = () => {
       { key: 'id', label: 'ID' },
       { key: 'tipoAlumnoId', label: 'Tipo Alumno', render: (i: EventoPrecio) => tipoAlumnoNombre(i.tipoAlumnoId) },
       { key: 'precioBase', label: 'Precio', render: (i: EventoPrecio) => `$${i.precioBase.toFixed(2)}` },
+      { key: 'precioDolares', label: 'USD', render: (i: EventoPrecio) => i.precioDolares != null ? `USD ${i.precioDolares.toFixed(2)}` : '-' },
       { key: 'permiteDescuento', label: 'Desc.', render: (i: EventoPrecio) => i.permiteDescuento ? 'Si' : 'No' },
       { key: 'activo', label: 'Activo', render: (i: EventoPrecio) => i.activo ? <span className="badge bg-green-100 text-green-700">Si</span> : <span className="badge bg-gray-100 text-gray-700">No</span> },
-    ], onEdit: (i: EventoPrecio) => { setEditId(i.id); setPrecioForm({ eventoId, tipoAlumnoId: i.tipoAlumnoId, articuloCodigo: i.articuloCodigo, precioBase: i.precioBase, precioCuotas: i.precioCuotas ?? null, cantidadCuotas: i.cantidadCuotas || 6, permiteDescuento: i.permiteDescuento, activo: i.activo }); if (i.articuloCodigo) { const cod = i.articuloCodigo; articulosService.buscar(cod).then(items => { const found = items.find(a => a.codArticu === cod); setPrecioArticuloSelected(found ? { value: found.codArticu, label: `${found.codArticu} - ${found.descripcion}` } : { value: cod, label: cod }) }) } else { setPrecioArticuloSelected(null) }; setError(''); setShowForm(true) } }
+    ], onEdit: (i: EventoPrecio) => { setEditId(i.id); setPrecioForm({ eventoId, tipoAlumnoId: i.tipoAlumnoId, articuloCodigo: i.articuloCodigo, precioBase: i.precioBase, precioDolares: i.precioDolares ?? null, precioCuotas: i.precioCuotas ?? null, cantidadCuotas: i.cantidadCuotas || 6, permiteDescuento: i.permiteDescuento, activo: i.activo }); if (i.articuloCodigo) { const cod = i.articuloCodigo; articulosService.buscar(cod).then(items => { const found = items.find(a => a.codArticu === cod); setPrecioArticuloSelected(found ? { value: found.codArticu, label: `${found.codArticu} - ${found.descripcion}` } : { value: cod, label: cod }) }) } else { setPrecioArticuloSelected(null) }; setError(''); setShowForm(true) } }
     if (tab === 'beneficios') return { data: beneficios, columns: [
       { key: 'id', label: 'ID' }, { key: 'provinciaCodigo', label: 'Provincia', render: (i: EventoProvinciaBeneficio) => provincias.find(p => p.codProvin === i.provinciaCodigo)?.nombrePro || i.provinciaCodigo },
       { key: 'porcentajeDescuento', label: '% Desc.' }, { key: 'aplicaPrecioSocio', label: 'Precio Socio', render: (i: EventoProvinciaBeneficio) => i.aplicaPrecioSocio ? 'Si' : 'No' },

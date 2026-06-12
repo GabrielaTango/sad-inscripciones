@@ -6,6 +6,7 @@ public class EventoPrecio : BaseEntity
     public int TipoAlumnoId { get; set; }
     public string? ArticuloCodigo { get; set; }
     public decimal PrecioBase { get; set; }
+    public decimal? PrecioDolares { get; set; }
     public decimal? PrecioCuotas { get; set; }
     public int CantidadCuotas { get; set; } = 6;
     public bool PermiteDescuento { get; set; } = true;

@@ -30,6 +30,10 @@ public class Inscripcion : BaseEntity
     public string? Institucion { get; set; }
     public string? Sector { get; set; }
     public bool SincronizadoTango { get; set; }
+
+    // No persistido: se completan solo en los listados (join a TiposAlumno / Pagos).
+    public bool Extranjero { get; set; }
+    public decimal? MontoDolares { get; set; }
     // Token único usado en el external_reference de MercadoPago (ver ExternalReferenceHelper).
     public string? PublicRef { get; set; }
 }
