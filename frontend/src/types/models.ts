@@ -294,6 +294,7 @@ export interface ResumenCuenta {
   nComp: string
   fechaVto: string
   saldo: number
+  esCuota: boolean
 }
 
 export interface SocioData {

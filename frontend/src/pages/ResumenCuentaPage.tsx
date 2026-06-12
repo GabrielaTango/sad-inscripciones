@@ -131,7 +131,12 @@ const ResumenCuentaPage = () => {
   }, [searchParams, setSearchParams, loadData])
 
   const sorted = useMemo(
-    () => [...movimientos].sort((a, b) => new Date(a.fechaVto).getTime() - new Date(b.fechaVto).getTime()),
+    () =>
+      [...movimientos].sort((a, b) => {
+        // Primero las cuotas societarias, luego los otros; dentro de cada grupo por vencimiento.
+        if (a.esCuota !== b.esCuota) return a.esCuota ? -1 : 1
+        return new Date(a.fechaVto).getTime() - new Date(b.fechaVto).getTime()
+      }),
     [movimientos]
   )
 
@@ -267,7 +272,7 @@ const ResumenCuentaPage = () => {
           <>
             <CreditCard className="w-5 h-5 text-blue-600" />
             <div className="flex-1">
-              <div className="font-semibold text-slate-800">¿Querés cobrar tus cuotas por débito automático?</div>
+              <div className="font-semibold text-slate-800">¿Querés pagar tus cuotas por débito automático?</div>
               <div className="text-sm text-slate-600">
                 Cargá tu tarjeta y nos encargamos del resto.
               </div>
@@ -309,6 +314,7 @@ const ResumenCuentaPage = () => {
                     </th>
                     <th className="p-3">Tipo</th>
                     <th className="p-3">Comprobante</th>
+                    <th className="p-3">Concepto</th>
                     <th className="p-3">Vencimiento</th>
                     <th className="p-3 text-right">Saldo</th>
                   </tr>
@@ -333,6 +339,13 @@ const ResumenCuentaPage = () => {
                         </td>
                         <td className="p-3"><span className="badge bg-slate-100 text-slate-700">{mov.tComp}</span></td>
                         <td className="p-3 font-semibold">{mov.nComp}</td>
+                        <td className="p-3">
+                          {mov.esCuota ? (
+                            <span className="badge bg-blue-100 text-blue-700">Cuota societaria</span>
+                          ) : (
+                            <span className="badge bg-amber-100 text-amber-700">Otro</span>
+                          )}
+                        </td>
                         <td className="p-3">{formatDate(mov.fechaVto)}</td>
                         <td className="p-3 text-right font-bold">{formatCurrency(mov.saldo)}</td>
                       </tr>

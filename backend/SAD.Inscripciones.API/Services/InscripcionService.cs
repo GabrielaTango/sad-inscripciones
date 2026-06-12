@@ -81,7 +81,9 @@ public class InscripcionService : IInscripcionService
             ?? throw new BusinessException($"TipoAlumno con Id {dto.TipoAlumnoId} no existe.");
 
         // Las categorías de socio (ej. "SOCIO", "SOCIO EXTRANJERO") solo se permiten si el
-        // documento corresponde a un socio real: debe existir en Clientes (espejo de Tango GVA14).
+        // documento corresponde a un socio real: debe existir en Clientes (espejo de Tango GVA14)
+        // con COD_CLIENT '0…'. Los 'L…' (otra categoría) y los 'P…'-'W…' (clientes creados por el
+        // propio sistema al inscribir gente a eventos) NO son socios.
         if (EsCategoriaSocio(tipoAlumno.Nombre))
         {
             if (string.IsNullOrWhiteSpace(dto.Documento))
@@ -89,7 +91,7 @@ public class InscripcionService : IInscripcionService
 
             using var clientesConn = _dbFactory.CreateConnection();
             var esSocioReal = await clientesConn.ExecuteScalarAsync<int>(
-                "SELECT COUNT(1) FROM Clientes WHERE Cuit = @Cuit",
+                "SELECT COUNT(1) FROM Clientes WHERE Cuit = @Cuit AND CodClient LIKE '0%'",
                 new { Cuit = dto.Documento.Trim() });
             if (esSocioReal == 0)
                 throw new BusinessException("El documento ingresado no corresponde a un socio. Seleccioná una categoría de no socio.");
@@ -241,6 +243,8 @@ public class InscripcionService : IInscripcionService
             Especialidad = dto.Especialidad,
             Institucion = dto.Institucion,
             Sector = dto.Sector,
+            // Token único para el external_reference de MP (evita colisión con pagos viejos del sandbox).
+            PublicRef = Guid.NewGuid().ToString("N"),
             CreatedBy = createdBy,
             UpdatedBy = createdBy
         };
@@ -294,7 +298,10 @@ public class InscripcionService : IInscripcionService
 
         if (estadoAnterior == estado) return;
 
-        await _repository.UpdateEstadoAsync(id, estado, updatedBy);
+        // La transición es atómica en la base: si otra ejecución concurrente ya la hizo,
+        // este UPDATE no cambia nada (false) y no repetimos los side-effects (mail, cupones).
+        var cambiado = await _repository.UpdateEstadoAsync(id, estado, updatedBy);
+        if (!cambiado) return;
         inscripcion.Estado = estado;
 
         if (estado == "Confirmada")

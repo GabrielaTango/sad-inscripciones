@@ -86,7 +86,7 @@ public class CapituloController : ControllerBase
         var locked = await GetLockedComprobantesAsync(conn, cuit);
 
         var movimientos = await conn.QueryAsync<ResumenItemDto>(
-            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit ORDER BY FechaVto ASC",
+            "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo, EsCuota FROM ResumenCuenta WHERE Cuit = @Cuit ORDER BY FechaVto ASC",
             new { Cuit = cuit });
 
         // No se filtran los bloqueados: se marcan con PendienteSync para que el capítulo
@@ -145,7 +145,7 @@ public class CapituloController : ControllerBase
         if (request.Ids != null && request.Ids.Length > 0)
         {
             var movimientos = (await conn.QueryAsync<ResumenItemDto>(
-                "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
+                "SELECT Id, Cuit, TComp, NComp, FechaVto, Saldo, EsCuota FROM ResumenCuenta WHERE Cuit = @Cuit AND Id IN @Ids ORDER BY FechaVto ASC",
                 new { Cuit = request.Cuit, Ids = request.Ids })).ToList();
 
             if (movimientos.Count != request.Ids.Length)
@@ -159,7 +159,7 @@ public class CapituloController : ControllerBase
             if (Math.Abs(totalSaldos - request.Monto) > 0.01m)
                 return BadRequest(new { error = $"El monto ({request.Monto}) no coincide con la suma de los comprobantes ({totalSaldos})" });
 
-            comprobantesJson = JsonSerializer.Serialize(movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo }));
+            comprobantesJson = JsonSerializer.Serialize(movimientos.Select(m => new { m.TComp, m.NComp, m.FechaVto, m.Saldo, m.EsCuota }));
         }
 
         var externalReference = $"CAP-{codVended}-{request.Cuit}-{DateTime.UtcNow:yyyyMMddHHmmss}";
@@ -346,6 +346,7 @@ public class ResumenItemDto
     public string NComp { get; set; } = string.Empty;
     public DateTime FechaVto { get; set; }
     public decimal Saldo { get; set; }
+    public bool EsCuota { get; set; } = true;
     public bool PendienteSync { get; set; }
 }
 

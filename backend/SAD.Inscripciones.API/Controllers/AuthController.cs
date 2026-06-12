@@ -53,8 +53,13 @@ public class AuthController : ControllerBase
         var cuit = loginDto.Usuario;
 
         using var connection = _dbFactory.CreateConnection();
+        // Pueden ingresar al portal los socios reales (COD_CLIENT '0…') y los clientes 'P…'.
+        // OJO: los 'P…' pueden loguearse pero NO son socios — el endpoint socio-data sigue
+        // filtrando solo '0…', así que el flag esSocio del frontend queda en false y, en la
+        // inscripción, InscripcionService rechaza las categorías de socio para estos clientes.
+        // El resto ('L…' y otros) NO puede ingresar.
         var result = await connection.QueryFirstOrDefaultAsync<dynamic>(
-            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit",
+            "SELECT Cuit FROM Clientes WHERE Cuit = @Cuit AND (CodClient LIKE '0%' OR CodClient LIKE 'P%')",
             new { Cuit = cuit });
 
         if (result == null)
@@ -100,8 +105,10 @@ public class AuthController : ControllerBase
     private async Task<SocioDataDto?> BuscarSocioEnClientes(string cuit)
     {
         using var connection = _dbFactory.CreateConnection();
+        // Solo socios reales (COD_CLIENT '0…'). Esto define el flag esSocio del frontend
+        // y, por ende, el autocompletado de datos y el bucket de precios de socio.
         var result = await connection.QueryFirstOrDefaultAsync<dynamic>(
-            "SELECT Cuit, RazonSoci, Domicilio, CodPostal, CodProvin FROM Clientes WHERE Cuit = @Cuit",
+            "SELECT Cuit, RazonSoci, Domicilio, CodPostal, CodProvin FROM Clientes WHERE Cuit = @Cuit AND CodClient LIKE '0%'",
             new { Cuit = cuit });
 
         if (result == null)

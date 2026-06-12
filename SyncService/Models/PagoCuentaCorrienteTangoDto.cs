@@ -19,4 +19,5 @@ public class ComprobanteImputable
     public string NComp { get; set; } = string.Empty;
     public DateTime FechaVto { get; set; }
     public decimal Saldo { get; set; }
+    public bool EsCuota { get; set; } = true;
 }
