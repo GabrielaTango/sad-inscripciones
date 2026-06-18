@@ -112,7 +112,7 @@ public class TangoPagoService
             sba04.SetDate("FECHA_ING", now);
             sba04.Set("COD_GVA14", codClient);
             sba04.SetDecimal("TOTAL_IMPORTE_CTE", importeArs);
-            sba04.SetDecimal("TOTAL_IMPORTE_EXT", importeArs);
+            sba04.SetDecimal("TOTAL_IMPORTE_EXT", unidades);
             if (esUsd) sba04.SetDecimal("COTIZACION", cotiz);
             sba04.Set("CONCEPTO", ConstruirConcepto(pago));
             sba04.SetInt("ID_SBA02", IdSBA02);

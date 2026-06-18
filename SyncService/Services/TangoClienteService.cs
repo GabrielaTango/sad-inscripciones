@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
+using SyncService.Helpers;
 using SyncService.Models;
 
 namespace SyncService.Services;
@@ -30,7 +31,7 @@ public class TangoClienteService
             throw new InvalidOperationException("Documento (CUIT) requerido para crear/obtener cliente en Tango");
 
         var existente = await conn.QueryFirstOrDefaultAsync<string>(
-            "SELECT TOP 1 COD_CLIENT FROM GVA14 WITH (UPDLOCK, HOLDLOCK) WHERE CUIT = @Cuit AND FECHA_INHA = '1800-01-01'",
+            $"SELECT TOP 1 COD_CLIENT FROM GVA14 WITH (UPDLOCK, HOLDLOCK) WHERE CUIT = @Cuit AND {Gva14.Activo} ORDER BY ID_GVA14 DESC",
             new { Cuit = cuit }, tx);
 
         if (!string.IsNullOrWhiteSpace(existente))

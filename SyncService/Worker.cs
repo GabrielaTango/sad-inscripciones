@@ -402,15 +402,23 @@ public class Worker : BackgroundService
         switch (tabla)
         {
             case "Clientes":
-                var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
-                    SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio,
-                           C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
-                           COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
-                           CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
-                    FROM GVA14 WHERE CUIT = @Clave AND FECHA_INHA = '1800-01-01'",
+                // Sólo la fila activa del CUIT; si hubiera más de una, la de ID_GVA14 más alto.
+                var cliente = await conn.QueryFirstOrDefaultAsync<dynamic>($@"
+                    SELECT TOP 1 g.CUIT AS Cuit, g.RAZON_SOCI AS RazonSoci, g.DOMICILIO AS Domicilio,
+                           g.C_POSTAL AS CodPostal, g.COD_PROVIN AS CodProvin,
+                           g.COD_VENDED AS CodVended, g.COD_CLIENT AS CodClient,
+                           g.E_MAIL AS Email, z.NOMBRE_ZON AS Categoria,
+                           g.CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
+                    FROM GVA14 g
+                    LEFT OUTER JOIN GVA05 z ON z.COD_ZONA = g.COD_ZONA
+                    WHERE g.CUIT = @Clave AND g.{Gva14.Activo}
+                    ORDER BY g.ID_GVA14 DESC",
                     new { Clave = clave });
                 if (cliente != null)
-                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim(), debitoAutomaticoTango = (string?)cliente.DebitoAutomaticoTango?.ToString().Trim() });
+                    await PostAsync("/api/sync/clientes", new { cuit = (string)cliente.Cuit?.ToString().Trim(), razonSoci = (string)cliente.RazonSoci?.ToString().Trim(), domicilio = (string?)cliente.Domicilio?.ToString().Trim(), codPostal = (string?)cliente.CodPostal?.ToString().Trim(), codProvin = (string?)cliente.CodProvin?.ToString().Trim(), codVended = (string?)cliente.CodVended?.ToString().Trim(), codClient = (string?)cliente.CodClient?.ToString().Trim(), email = (string?)cliente.Email?.ToString().Trim(), categoria = (string?)cliente.Categoria?.ToString().Trim(), debitoAutomaticoTango = (string?)cliente.DebitoAutomaticoTango?.ToString().Trim() });
+                else
+                    // El CUIT ya no tiene fila activa en GVA14 (inhabilitado): lo quitamos del espejo.
+                    await DeleteAsync($"/api/sync/clientes/{Uri.EscapeDataString(clave.Trim())}");
                 break;
 
             case "Articulos":
@@ -464,6 +472,13 @@ public class Worker : BackgroundService
         var response = await _http.PostAsync(url, content);
         if (!response.IsSuccessStatusCode)
             _logger.LogWarning("POST {Url} returned {Status}", url, response.StatusCode);
+    }
+
+    private async Task DeleteAsync(string url)
+    {
+        var response = await _http.DeleteAsync(url);
+        if (!response.IsSuccessStatusCode)
+            _logger.LogWarning("DELETE {Url} returned {Status}", url, response.StatusCode);
     }
 
     private async Task SyncCuentaCorrienteAsync(SqlConnection conn, string claveValor)
@@ -551,13 +566,19 @@ public class Worker : BackgroundService
                 .ToList();
             await PostBatchedAsync("/api/sync/provincias-batch", provincias, "Provincias");
 
-            // Clientes (batch)
-            var clientes = (await conn.QueryAsync<dynamic>(@"
-                SELECT CUIT AS Cuit, RAZON_SOCI AS RazonSoci, DOMICILIO AS Domicilio,
-                       C_POSTAL AS CodPostal, COD_PROVIN AS CodProvin,
-                       COD_VENDED AS CodVended, COD_CLIENT AS CodClient,
-                       CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
-                FROM GVA14 WHERE CUIT IS NOT NULL AND CUIT != '' AND FECHA_INHA = '1800-01-01'"))
+            // Clientes (batch). Una fila por CUIT: la activa de mayor ID_GVA14 (evita
+            // mandar al espejo dos COD_CLIENT del mismo CUIT pisándose entre sí).
+            var clientes = (await conn.QueryAsync<dynamic>($@"
+                SELECT g.CUIT AS Cuit, g.RAZON_SOCI AS RazonSoci, g.DOMICILIO AS Domicilio,
+                       g.C_POSTAL AS CodPostal, g.COD_PROVIN AS CodProvin,
+                       g.COD_VENDED AS CodVended, g.COD_CLIENT AS CodClient,
+                       g.E_MAIL AS Email, z.NOMBRE_ZON AS Categoria,
+                       g.CAMPOS_ADICIONALES.value('(CAMPOS_ADICIONALES/CA_1096_DEBITO_AUTOMATICO)[1]', 'VARCHAR(5)') AS DebitoAutomaticoTango
+                FROM GVA14 g
+                LEFT OUTER JOIN GVA05 z ON z.COD_ZONA = g.COD_ZONA
+                WHERE g.CUIT IS NOT NULL AND g.CUIT != '' AND g.{Gva14.Activo}
+                  AND g.ID_GVA14 = (SELECT MAX(g2.ID_GVA14) FROM GVA14 g2
+                                    WHERE g2.CUIT = g.CUIT AND g2.{Gva14.Activo})"))
                 .Select(c => new
                 {
                     cuit = ((string?)c.Cuit?.ToString())?.Trim(),
@@ -567,6 +588,8 @@ public class Worker : BackgroundService
                     codProvin = ((string?)c.CodProvin?.ToString())?.Trim(),
                     codVended = ((string?)c.CodVended?.ToString())?.Trim(),
                     codClient = ((string?)c.CodClient?.ToString())?.Trim(),
+                    email = ((string?)c.Email?.ToString())?.Trim(),
+                    categoria = ((string?)c.Categoria?.ToString())?.Trim(),
                     debitoAutomaticoTango = ((string?)c.DebitoAutomaticoTango?.ToString())?.Trim(),
                 })
                 .Where(c => !string.IsNullOrEmpty(c.cuit))
@@ -607,8 +630,10 @@ public class Worker : BackgroundService
             await PostBatchedAsync("/api/sync/vendedores-batch", vendedores, "Vendedores");
 
             // Cuenta Corriente — query pesada por cliente, paralelizamos
+            // Sólo clientes activos: un COD_CLIENT inhabilitado con saldo comparte CUIT con
+            // el activo y, al postear el resumen por CUIT, pisaría al del cliente vigente.
             var clientesCuenta = (await conn.QueryAsync<dynamic>(
-                "SELECT DISTINCT GVA12.COD_CLIENT, GVA14.CUIT FROM GVA12 INNER JOIN GVA14 ON GVA14.COD_CLIENT = GVA12.COD_CLIENT WHERE GVA14.CUIT IS NOT NULL AND GVA14.CUIT != '' AND SALDO_CC <> 0"))
+                $"SELECT DISTINCT GVA12.COD_CLIENT, GVA14.CUIT FROM GVA12 INNER JOIN GVA14 ON GVA14.COD_CLIENT = GVA12.COD_CLIENT WHERE GVA14.CUIT IS NOT NULL AND GVA14.CUIT != '' AND GVA14.{Gva14.Activo} AND SALDO_CC <> 0"))
                 .Select(cc => new
                 {
                     CodClient = ((string)cc.COD_CLIENT).Trim(),

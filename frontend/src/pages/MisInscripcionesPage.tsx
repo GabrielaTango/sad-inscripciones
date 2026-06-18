@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { inscripcionesService } from '../services/inscripcionesService'
 import type { InscripcionPendiente } from '../services/inscripcionesService'
 import { eventosService } from '../services/eventosService'
-import type { Evento } from '../types/models'
-import { Search, Info, Calendar, MapPin, User, CreditCard } from 'lucide-react'
+import { configuracionPayPalService } from '../services/configuracionPayPalService'
+import type { Evento, ConfiguracionPayPalPublic } from '../types/models'
+import { Search, Info, Calendar, MapPin, User, CreditCard, ShieldCheck } from 'lucide-react'
+import PayPalCheckout from '../components/PayPalCheckout'
 
 const MisInscripcionesPage = () => {
   const { isAuthenticated, cuit } = useAuth()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [documento, setDocumento] = useState('')
   const [eventoId, setEventoId] = useState<number | undefined>(undefined)
   const [eventosActivos, setEventosActivos] = useState<Evento[]>([])
@@ -18,6 +21,7 @@ const MisInscripcionesPage = () => {
   const [searched, setSearched] = useState(false)
   const [error, setError] = useState('')
   const [payingId, setPayingId] = useState<number | null>(null)
+  const [paypalConfig, setPaypalConfig] = useState<ConfiguracionPayPalPublic | null>(null)
 
   // Load active events for the select (only when not logged in)
   useEffect(() => {
@@ -25,6 +29,21 @@ const MisInscripcionesPage = () => {
       eventosService.getActivos().then(setEventosActivos).catch(() => {})
     }
   }, [isAuthenticated])
+
+  // Config de PayPal para inscripciones de extranjeros (cobro en USD).
+  useEffect(() => {
+    configuracionPayPalService.getPublic().then(setPaypalConfig).catch(() => {})
+  }, [])
+
+  // Confirma el pago de PayPal de una inscripción ya existente y muestra el resultado.
+  const onPayPalSuccess = async (orderId: string, inscripcionId: number, monto: number) => {
+    try {
+      await inscripcionesService.confirmarPagoPayPal(inscripcionId, orderId, monto)
+    } catch {
+      // El pago ya se capturó en PayPal; igual mostramos el resultado.
+    }
+    navigate('/pago/resultado?status=approved')
+  }
 
   // Auto-search when logged in
   const searchByDoc = useCallback(async (doc: string, evId?: number) => {
@@ -156,14 +175,42 @@ const MisInscripcionesPage = () => {
                           </div>
                         </div>
                         <div className="md:col-span-3 md:text-center my-2 md:my-0">
-                          {insc.descuentoAplicado > 0 && (
-                            <div className="text-sm text-slate-500 line-through">{formatCurrency(insc.precioBase)}</div>
+                          {insc.esExtranjero && insc.montoUsd ? (
+                            <div className="text-2xl font-bold text-blue-600">USD {insc.montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                          ) : (
+                            <>
+                              {insc.descuentoAplicado > 0 && (
+                                <div className="text-sm text-slate-500 line-through">{formatCurrency(insc.precioBase)}</div>
+                              )}
+                              <div className="text-2xl font-bold text-blue-600">{formatCurrency(insc.precioFinal)}</div>
+                            </>
                           )}
-                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(insc.precioFinal)}</div>
                           <span className={`badge ${insc.estado === 'Confirmada' ? 'bg-green-100 text-green-700' : insc.estado === 'Reservada' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{insc.estado}</span>
                         </div>
                         <div className="md:col-span-3 md:text-end">
-                          {insc.estado === 'Pendiente' && insc.precioFinal > 0 && (
+                          {insc.estado === 'Pendiente' && insc.esExtranjero && insc.montoUsd && insc.montoUsd > 0 && (
+                            paypalConfig?.clientId ? (
+                              <div>
+                                <div className="text-sm text-slate-600 mb-2">Pago en dólares por PayPal</div>
+                                <PayPalCheckout
+                                  clientId={paypalConfig.clientId}
+                                  currency={paypalConfig.moneda || 'USD'}
+                                  amount={insc.montoUsd}
+                                  createInscripcion={() => Promise.resolve(insc.id)}
+                                  onSuccess={(orderId, inscId) => onPayPalSuccess(orderId, inscId, insc.montoUsd ?? 0)}
+                                />
+                                <div className="text-center mt-2">
+                                  <span className="text-sm text-slate-600">
+                                    <ShieldCheck className="inline mr-1" size={14} />
+                                    Pago seguro procesado por PayPal
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="alert-danger mb-0 text-sm">El pago con PayPal no está disponible en este momento.</div>
+                            )
+                          )}
+                          {insc.estado === 'Pendiente' && !insc.esExtranjero && insc.precioFinal > 0 && (
                             <div className="flex flex-col gap-2">
                               <button
                                 className="btn-accent btn-sm"

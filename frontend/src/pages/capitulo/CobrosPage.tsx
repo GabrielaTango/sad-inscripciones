@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, CheckSquare, CreditCard, AlertTriangle, CheckCircle, Wallet, ArrowLeft, Clock, ShieldCheck, RefreshCw } from 'lucide-react'
+import { Search, CheckSquare, CreditCard, AlertTriangle, CheckCircle, Wallet, ArrowLeft, Clock, ShieldCheck, RefreshCw, FileSpreadsheet } from 'lucide-react'
 import { capituloService } from '../../services/capituloService'
 import type { Vendedor, SocioCapitulo, ResumenItem, MedioPagoCapitulo } from '../../services/capituloService'
 import DebitoAutomaticoForm, {
@@ -19,6 +19,7 @@ const CobrosPage = () => {
   const [busqueda, setBusqueda] = useState('')
   const [socios, setSocios] = useState<SocioCapitulo[]>([])
   const [buscando, setBuscando] = useState(false)
+  const [exportando, setExportando] = useState(false)
 
   const [etapa, setEtapa] = useState<Etapa>('buscar')
   const [socioActivo, setSocioActivo] = useState<SocioCapitulo | null>(null)
@@ -48,6 +49,18 @@ const CobrosPage = () => {
       setError(err instanceof Error ? err.message : 'Error al buscar socios')
     } finally {
       setBuscando(false)
+    }
+  }
+
+  const exportar = async () => {
+    setExportando(true)
+    setError('')
+    try {
+      await capituloService.exportSociosExcel(busqueda.trim())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al exportar')
+    } finally {
+      setExportando(false)
     }
   }
 
@@ -234,12 +247,26 @@ const CobrosPage = () => {
           {error && <div className="alert-danger mt-3">{error}</div>}
 
           {socios.length > 0 && (
-            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+            <div className="mt-4">
+              <div className="flex justify-end mb-2">
+                <button
+                  className="btn-outline-success btn-sm"
+                  onClick={exportar}
+                  disabled={exportando}
+                  title="Exportar todos los socios del capítulo a Excel"
+                >
+                  <FileSpreadsheet className="w-4 h-4 inline mr-1" />
+                  {exportando ? 'Exportando...' : 'Exportar a Excel'}
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm">
                 <thead className="bg-slate-800 text-white">
                   <tr>
                     <th className="p-3 text-left">CUIT</th>
                     <th className="p-3 text-left">Razón social</th>
+                    <th className="p-3 text-left">Categoría</th>
+                    <th className="p-3 text-left">Email</th>
                     <th className="p-3 text-left">Domicilio</th>
                     <th className="p-3 text-right">Saldo</th>
                     <th className="p-3"></th>
@@ -250,6 +277,8 @@ const CobrosPage = () => {
                     <tr key={s.cuit} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="p-3 font-mono">{s.cuit}</td>
                       <td className="p-3 font-semibold">{s.razonSoci}</td>
+                      <td className="p-3 text-slate-600">{s.categoria || '-'}</td>
+                      <td className="p-3 text-slate-600">{s.email || '-'}</td>
                       <td className="p-3 text-slate-600">{s.domicilio || '-'}</td>
                       <td className={`p-3 text-right font-bold ${s.saldo > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
                         {formatCurrency(s.saldo)}
@@ -263,6 +292,7 @@ const CobrosPage = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 

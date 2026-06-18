@@ -73,7 +73,7 @@ public class SyncController : ControllerBase
         await conn.ExecuteAsync(SqlClientes, new
         {
             dto.Cuit, dto.RazonSoci, dto.Domicilio, dto.CodPostal,
-            dto.CodProvin, dto.CodVended, dto.CodClient,
+            dto.CodProvin, dto.CodVended, dto.CodClient, dto.Email, dto.Categoria,
             DebitoAutomaticoActivo = ParseDebito(dto.DebitoAutomaticoTango),
         });
         return Ok();
@@ -90,10 +90,10 @@ public class SyncController : ControllerBase
         // está Sincronizado (mismo criterio que el upsert single).
         var (sql, parameters) = BuildBulkUpsert(
             "Clientes",
-            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient", "DebitoAutomatico" },
-            new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient" },
+            new[] { "Cuit", "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient", "Email", "Categoria", "DebitoAutomatico" },
+            new[] { "RazonSoci", "Domicilio", "CodPostal", "CodProvin", "CodVended", "CodClient", "Email", "Categoria" },
             items,
-            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended, c.CodClient, ParseDebito(c.DebitoAutomaticoTango) });
+            c => new object?[] { c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.CodVended, c.CodClient, c.Email, c.Categoria, ParseDebito(c.DebitoAutomaticoTango) });
 
         using var conn = _dbFactory.CreateConnection();
         await conn.ExecuteAsync(sql, parameters);
@@ -117,10 +117,11 @@ public class SyncController : ControllerBase
         !string.IsNullOrWhiteSpace(raw) && raw.Trim().Equals("S", StringComparison.OrdinalIgnoreCase);
 
     private const string SqlClientes = @"
-        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended, CodClient, DebitoAutomatico)
-        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended, @CodClient, @DebitoAutomaticoActivo)
+        INSERT INTO Clientes (Cuit, RazonSoci, Domicilio, CodPostal, CodProvin, CodVended, CodClient, Email, Categoria, DebitoAutomatico)
+        VALUES (@Cuit, @RazonSoci, @Domicilio, @CodPostal, @CodProvin, @CodVended, @CodClient, @Email, @Categoria, @DebitoAutomaticoActivo)
         ON DUPLICATE KEY UPDATE
             RazonSoci=@RazonSoci, Domicilio=@Domicilio, CodPostal=@CodPostal, CodProvin=@CodProvin, CodVended=@CodVended, CodClient=@CodClient,
+            Email=@Email, Categoria=@Categoria,
             DebitoAutomatico = CASE WHEN EstadoSyncDebito = 'Sincronizado' THEN @DebitoAutomaticoActivo ELSE DebitoAutomatico END";
 
     [HttpDelete("clientes/{cuit}")]
@@ -296,8 +297,17 @@ public class SyncController : ControllerBase
             INNER JOIN Eventos e ON e.Id = i.EventoId
             WHERE i.Estado = 'Confirmada'
               AND i.SincronizadoTango = 0
-              AND i.PrecioFinal > 0
-              AND i.DeletedAt IS NULL");
+              AND i.DeletedAt IS NULL
+              -- Usamos el monto efectivamente pagado (suma de pagos confirmados),
+              -- no i.PrecioFinal: las inscripciones en USD (extranjeros, cobradas por
+              -- PayPal) tienen PrecioBase/PrecioFinal en ARS = 0 y quedaban excluidas.
+              AND COALESCE((
+                      SELECT SUM(p.Monto)
+                      FROM Pagos p
+                      WHERE p.InscripcionId = i.Id
+                        AND p.EstadoPago = 'Confirmado'
+                        AND p.DeletedAt IS NULL
+                  ), i.PrecioFinal) > 0");
         return Ok(inscripciones);
     }
 
@@ -520,6 +530,8 @@ public class SyncClienteDto
     public string? CodProvin { get; set; }
     public string? CodVended { get; set; }
     public string? CodClient { get; set; }
+    public string? Email { get; set; }
+    public string? Categoria { get; set; }
     public string? DebitoAutomaticoTango { get; set; }
 }
 

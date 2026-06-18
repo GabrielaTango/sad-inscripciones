@@ -53,6 +53,8 @@ export interface InscripcionPendiente {
   fechaInscripcion: string
   eventoFechaInicio: string
   eventoModalidad: string
+  esExtranjero: boolean
+  montoUsd?: number | null
 }
 
 export const inscripcionesService = {

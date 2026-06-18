@@ -28,7 +28,7 @@ public class TangoDebitoAutomaticoService
         }
 
         var existeCliente = await conn.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM GVA14 WHERE CUIT = @Cuit", new { Cuit = cuit });
+            "SELECT COUNT(*) FROM GVA14 WHERE CUIT = @Cuit AND FECHA_INHA = '1800-01-01' ORDER BY ID_GVA14 DESC", new { Cuit = cuit });
         if (existeCliente == 0)
         {
             _logger.LogWarning("CUIT {Cuit} no existe en GVA14, se omite débito", cuit);
@@ -129,7 +129,7 @@ public class TangoDebitoAutomaticoService
         await conn.ExecuteAsync(@"
             UPDATE GVA14
             SET CAMPOS_ADICIONALES = CONVERT(XML, '<CAMPOS_ADICIONALES />')
-            WHERE CUIT = @Cuit
+            WHERE CUIT = @Cuit  AND FECHA_INHA = '1800-01-01'
               AND (CAMPOS_ADICIONALES IS NULL
                    OR LTRIM(RTRIM(CONVERT(NVARCHAR(MAX), CAMPOS_ADICIONALES))) = '')",
             new { Cuit = cuit }, tx);
@@ -139,7 +139,7 @@ public class TangoDebitoAutomaticoService
         var deleteSql = $@"
             UPDATE GVA14
             SET CAMPOS_ADICIONALES.modify('delete /CAMPOS_ADICIONALES/{campo}')
-            WHERE CUIT = @Cuit
+            WHERE CUIT = @Cuit  AND FECHA_INHA = '1800-01-01'
               AND CAMPOS_ADICIONALES.exist('/CAMPOS_ADICIONALES/{campo}') = 1";
         await conn.ExecuteAsync(deleteSql, new { Cuit = cuit }, tx);
 
@@ -151,7 +151,7 @@ public class TangoDebitoAutomaticoService
                 insert <{campo}>{{sql:variable(""@Valor"")}}</{campo}>
                 as last into (/CAMPOS_ADICIONALES)[1]
             ')
-            WHERE CUIT = @Cuit";
+            WHERE CUIT = @Cuit AND FECHA_INHA = '1800-01-01'";
         await conn.ExecuteAsync(insertSql, new { Cuit = cuit, Valor = valor ?? string.Empty }, tx);
 
         // 4. Si la columna física homónima existe en GVA14, la actualizamos también.
@@ -161,7 +161,7 @@ public class TangoDebitoAutomaticoService
                 DECLARE @SQL NVARCHAR(MAX) = '
                     UPDATE GVA14
                     SET ' + QUOTENAME(@Campo) + ' = @Valor
-                    WHERE CUIT = @Cuit
+                    WHERE CUIT = @Cuit  AND FECHA_INHA = '1800-01-01'
                 ';
                 EXEC sp_executesql @SQL, N'@Valor VARCHAR(100), @Cuit VARCHAR(50)', @Valor, @Cuit;
             END";

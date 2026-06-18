@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClosedXML.Excel;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -50,24 +51,73 @@ public class CapituloController : ControllerBase
         var codVended = GetCodVended();
         if (string.IsNullOrEmpty(codVended)) return Unauthorized();
 
-        var term = (q ?? string.Empty).Trim();
+        using var conn = _dbFactory.CreateConnection();
+        var socios = await BuscarSociosAsync(conn, codVended, q, limit: 50);
+        return Ok(socios);
+    }
+
+    [HttpGet("socios/export")]
+    public async Task<IActionResult> ExportSocios([FromQuery] string? q)
+    {
+        var codVended = GetCodVended();
+        if (string.IsNullOrEmpty(codVended)) return Unauthorized();
 
         using var conn = _dbFactory.CreateConnection();
+        // Sin límite: el Excel exporta todos los socios del capítulo (la vista sólo muestra 50).
+        var socios = await BuscarSociosAsync(conn, codVended, q, limit: null);
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Socios");
+
+        ws.Cell(1, 1).Value = "CUIT";
+        ws.Cell(1, 2).Value = "Razón social";
+        ws.Cell(1, 3).Value = "Categoría";
+        ws.Cell(1, 4).Value = "Email";
+        ws.Cell(1, 5).Value = "Domicilio";
+        ws.Cell(1, 6).Value = "Saldo";
+        ws.Range(1, 1, 1, 6).Style.Font.Bold = true;
+
+        for (int i = 0; i < socios.Count; i++)
+        {
+            int row = i + 2;
+            var s = socios[i];
+            ws.Cell(row, 1).Value = s.Cuit;
+            ws.Cell(row, 2).Value = s.RazonSoci;
+            ws.Cell(row, 3).Value = s.Categoria ?? "";
+            ws.Cell(row, 4).Value = s.Email ?? "";
+            ws.Cell(row, 5).Value = s.Domicilio ?? "";
+            ws.Cell(row, 6).Value = s.Saldo;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"Socios_{codVended}.xlsx");
+    }
+
+    private static async Task<List<SocioCapituloDto>> BuscarSociosAsync(
+        System.Data.IDbConnection conn, string codVended, string? q, int? limit)
+    {
+        var term = (q ?? string.Empty).Trim();
         var sql = @"
-            SELECT c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin,
+            SELECT c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.Email, c.Categoria,
                    COALESCE(SUM(rc.Saldo), 0) AS Saldo
             FROM Clientes c
             LEFT JOIN ResumenCuenta rc ON rc.Cuit = c.Cuit
             WHERE c.CodVended = @CodVended" +
             (string.IsNullOrEmpty(term) ? string.Empty : " AND (c.Cuit LIKE @Like OR c.RazonSoci LIKE @Like)") +
-            @" GROUP BY c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin
-              ORDER BY c.RazonSoci
-              LIMIT 50";
+            @" GROUP BY c.Cuit, c.RazonSoci, c.Domicilio, c.CodPostal, c.CodProvin, c.Email, c.Categoria
+              ORDER BY c.RazonSoci" +
+            (limit.HasValue ? $" LIMIT {limit.Value}" : string.Empty);
 
         var socios = await conn.QueryAsync<SocioCapituloDto>(sql,
             new { CodVended = codVended, Like = $"%{term}%" });
 
-        return Ok(socios);
+        return socios.ToList();
     }
 
     [HttpGet("socios/{cuit}/resumen")]
@@ -335,6 +385,8 @@ public class SocioCapituloDto
     public string? Domicilio { get; set; }
     public string? CodPostal { get; set; }
     public string? CodProvin { get; set; }
+    public string? Email { get; set; }
+    public string? Categoria { get; set; }
     public decimal Saldo { get; set; }
 }
 

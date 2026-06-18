@@ -185,7 +185,11 @@ public class InscripcionRepository : IInscripcionRepository
             SELECT i.Id, i.EventoId, e.Titulo AS EventoTitulo, i.Nombre, i.Apellido, i.Email, i.Documento,
                    i.PrecioBase, i.DescuentoAplicado, i.PrecioFinal, i.PrecioFinalCuotas, i.CantidadCuotas,
                    i.MontoReserva, i.Estado, i.FechaInscripcion,
-                   e.FechaInicio AS EventoFechaInicio, e.Modalidad AS EventoModalidad
+                   e.FechaInicio AS EventoFechaInicio, e.Modalidad AS EventoModalidad,
+                   COALESCE((SELECT ta.Extranjero FROM TiposAlumno ta WHERE ta.Id = i.TipoAlumnoId), 0) AS EsExtranjero,
+                   (SELECT ep.PrecioDolares FROM EventoPrecios ep
+                    WHERE ep.EventoId = i.EventoId AND ep.TipoAlumnoId = i.TipoAlumnoId
+                      AND ep.Activo = 1 AND ep.DeletedAt IS NULL LIMIT 1) AS MontoUsd
             FROM Inscripciones i
             INNER JOIN Eventos e ON i.EventoId = e.Id
             WHERE i.Documento = @Documento AND i.Estado IN ('Pendiente', 'Confirmada', 'Reservada') AND i.DeletedAt IS NULL";

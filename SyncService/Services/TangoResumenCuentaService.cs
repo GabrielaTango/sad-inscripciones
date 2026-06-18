@@ -62,7 +62,7 @@ public class TangoResumenCuentaService
 
             // 1. Lookup cliente (no crear — el socio debe existir por tener CC)
             var codClient = await conn.QueryFirstOrDefaultAsync<string>(
-                "SELECT TOP 1 COD_CLIENT FROM GVA14 WHERE CUIT = @Cuit",
+                "SELECT TOP 1 COD_CLIENT FROM GVA14 WHERE CUIT = @Cuit AND FECHA_INHA = '1800-01-01' ORDER BY ID_GVA14 DESC",
                 new { Cuit = cuit }, tx);
 
             if (string.IsNullOrEmpty(codClient))

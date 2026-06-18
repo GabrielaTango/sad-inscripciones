@@ -19,4 +19,7 @@ public class InscripcionPendienteDto
     public DateTime FechaInscripcion { get; set; }
     public DateTime EventoFechaInicio { get; set; }
     public string EventoModalidad { get; set; } = string.Empty;
+    // Categoría de extranjero: el cobro se hace en USD por PayPal (PrecioFinal en ARS suele ser 0).
+    public bool EsExtranjero { get; set; }
+    public decimal? MontoUsd { get; set; }
 }
