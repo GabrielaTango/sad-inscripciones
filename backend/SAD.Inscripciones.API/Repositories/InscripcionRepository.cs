@@ -86,11 +86,11 @@ public class InscripcionRepository : IInscripcionRepository
     {
         const string sql = @"
             INSERT INTO Inscripciones (EventoId, TipoAlumnoId, Nombre, Apellido, Email, Telefono, Documento, Provincia,
-                PrecioBase, DescuentoAplicado, PrecioFinal, PrecioFinalCuotas, CantidadCuotas, MontoReserva, Estado, Observaciones, FechaInscripcion,
+                PrecioBase, DescuentoAplicado, PrecioFinal, PrecioFinalCuotas, CantidadCuotas, MontoReserva, PrecioFinalDolares, Estado, Observaciones, FechaInscripcion,
                 FechaNacimiento, Domicilio, CodigoPostal, Localidad, Pais, Celular, Profesion, Especialidad, Institucion, Sector, PublicRef,
                 CreatedBy, UpdatedBy, CreatedAt, UpdatedAt)
             VALUES (@EventoId, @TipoAlumnoId, @Nombre, @Apellido, @Email, @Telefono, @Documento, @Provincia,
-                @PrecioBase, @DescuentoAplicado, @PrecioFinal, @PrecioFinalCuotas, @CantidadCuotas, @MontoReserva, @Estado, @Observaciones, @FechaInscripcion,
+                @PrecioBase, @DescuentoAplicado, @PrecioFinal, @PrecioFinalCuotas, @CantidadCuotas, @MontoReserva, @PrecioFinalDolares, @Estado, @Observaciones, @FechaInscripcion,
                 @FechaNacimiento, @Domicilio, @CodigoPostal, @Localidad, @Pais, @Celular, @Profesion, @Especialidad, @Institucion, @Sector, @PublicRef,
                 @CreatedBy, @UpdatedBy, UTC_TIMESTAMP(), UTC_TIMESTAMP());
             SELECT LAST_INSERT_ID();";
@@ -187,9 +187,10 @@ public class InscripcionRepository : IInscripcionRepository
                    i.MontoReserva, i.Estado, i.FechaInscripcion,
                    e.FechaInicio AS EventoFechaInicio, e.Modalidad AS EventoModalidad,
                    COALESCE((SELECT ta.Extranjero FROM TiposAlumno ta WHERE ta.Id = i.TipoAlumnoId), 0) AS EsExtranjero,
-                   (SELECT ep.PrecioDolares FROM EventoPrecios ep
-                    WHERE ep.EventoId = i.EventoId AND ep.TipoAlumnoId = i.TipoAlumnoId
-                      AND ep.Activo = 1 AND ep.DeletedAt IS NULL LIMIT 1) AS MontoUsd
+                   COALESCE(i.PrecioFinalDolares,
+                     (SELECT ep.PrecioDolares FROM EventoPrecios ep
+                      WHERE ep.EventoId = i.EventoId AND ep.TipoAlumnoId = i.TipoAlumnoId
+                        AND ep.Activo = 1 AND ep.DeletedAt IS NULL LIMIT 1)) AS MontoUsd
             FROM Inscripciones i
             INNER JOIN Eventos e ON i.EventoId = e.Id
             WHERE i.Documento = @Documento AND i.Estado IN ('Pendiente', 'Confirmada', 'Reservada') AND i.DeletedAt IS NULL";

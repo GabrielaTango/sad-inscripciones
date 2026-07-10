@@ -134,10 +134,27 @@ public class InscripcionesController : ControllerBase
         {
             var precios = await _eventoPrecioService.GetByEventoIdAsync(inscripcion.EventoId);
             var precio = precios.FirstOrDefault(p => p.TipoAlumnoId == inscripcion.TipoAlumnoId && p.Activo);
-            var montoUsd = precio?.PrecioDolares ?? 0m;
-            if (montoUsd <= 0)
+            var precioDolares = precio?.PrecioDolares ?? 0m;
+            if (precioDolares <= 0)
                 throw new Exceptions.BusinessException(
                     $"La inscripción (#{inscripcion.Id}) se registró, pero la categoría extranjera no tiene un precio en USD configurado.");
+
+            // Monto ya con el descuento de beca aplicado (lo calcula el service en USD).
+            var montoUsd = inscripcion.PrecioFinalDolares ?? precioDolares;
+
+            // Beca de cobertura total (porcentaje 100%): sin costo, se confirma directamente.
+            if (montoUsd <= 0)
+            {
+                _logger.LogInformation(">>> Inscripcion {Id} extranjera con beca 100%, sin costo; se confirma directamente", inscripcion.Id);
+                await _service.UpdateEstadoAsync(inscripcion.Id, "Confirmada", GetCurrentUser());
+                return Ok(new
+                {
+                    inscripcion.Id,
+                    inscripcion.PrecioFinal,
+                    initPoint = (string?)null,
+                    message = "Inscripcion registrada sin costo."
+                });
+            }
 
             _logger.LogInformation(">>> Inscripcion {Id} es extranjera, pago por PayPal montoUsd={Monto}", inscripcion.Id, montoUsd);
             return Ok(new

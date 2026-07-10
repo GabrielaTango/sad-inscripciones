@@ -7,7 +7,8 @@ export const becaCodigosService = {
   getAll: () => api.get<BecaCodigo[]>(BASE),
   getByBecaEventoId: (becaEventoId: number) => api.get<BecaCodigo[]>(`${BASE}?becaEventoId=${becaEventoId}`),
   getById: (id: number) => api.get<BecaCodigo>(`${BASE}/${id}`),
-  validarCodigo: (codigo: string) => api.get<{ valido: boolean; becaEventoId: number }>(`${BASE}/validar/${codigo}`),
+  validarCodigo: (codigo: string) =>
+    api.get<{ valido: boolean; becaEventoId: number; eventoId: number; tipoDescuento: string; valor: number }>(`${BASE}/validar/${codigo}`),
   exportExcel: async (becaEventoId: number) => {
     const token = localStorage.getItem('sad_token')
     const response = await fetch(`/api${BASE}/export?becaEventoId=${becaEventoId}`, {

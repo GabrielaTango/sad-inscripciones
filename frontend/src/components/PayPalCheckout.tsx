@@ -51,11 +51,14 @@ function loadPayPalSdk(clientId: string, currency: string): Promise<void> {
 interface PayPalCheckoutProps {
   clientId: string
   currency: string
+  /** Monto a mostrar mientras no se creó la inscripción; el cobro real usa el monto que
+   *  devuelve createInscripcion (autoritativo, calculado por el backend). */
   amount: number
-  /** Crea la inscripción (estado Pendiente) y devuelve su id. Se llama al iniciar el pago. */
-  createInscripcion: () => Promise<number>
-  /** Llamado tras capturar el pago en PayPal. */
-  onSuccess: (orderId: string, inscripcionId: number) => void
+  /** Crea la inscripción (estado Pendiente) y devuelve su id y el monto final en USD a
+   *  cobrar (ya con el descuento de beca aplicado). Se llama al iniciar el pago. */
+  createInscripcion: () => Promise<{ inscripcionId: number; amount: number }>
+  /** Llamado tras capturar el pago en PayPal, con el monto efectivamente cobrado. */
+  onSuccess: (orderId: string, inscripcionId: number, amount: number) => void
   /** Devuelve un mensaje de error si el pago no debe iniciarse (ej: faltan términos). null si OK. */
   validate?: () => string | null
 }
@@ -99,18 +102,20 @@ const PayPalCheckout = ({ clientId, currency, amount, createInscripcion, onSucce
               return actions.resolve()
             },
             createOrder: (_data, actions) =>
-              createRef.current().then((insId) => {
-                inscripcionIdRef.current = insId
+              createRef.current().then(({ inscripcionId, amount }) => {
+                inscripcionIdRef.current = inscripcionId
+                // El backend es la fuente de verdad del monto (con la beca ya aplicada).
+                amountRef.current = amount
                 return actions.order.create({
                   purchase_units: [
-                    { amount: { value: amountRef.current.toFixed(2), currency_code: currency } },
+                    { amount: { value: amount.toFixed(2), currency_code: currency } },
                   ],
                 })
               }),
             onApprove: (data, actions) =>
               actions.order.capture().then(() => {
                 if (inscripcionIdRef.current != null) {
-                  successRef.current(data.orderID, inscripcionIdRef.current)
+                  successRef.current(data.orderID, inscripcionIdRef.current, amountRef.current)
                 }
               }),
             onError: (err) => {

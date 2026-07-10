@@ -16,6 +16,10 @@ public class Inscripcion : BaseEntity
     public decimal? PrecioFinalCuotas { get; set; }
     public int? CantidadCuotas { get; set; }
     public decimal? MontoReserva { get; set; }
+    // Monto final en USD (PrecioDolares con el descuento de beca de tipo porcentaje ya aplicado),
+    // usado en el cobro por PayPal de categorías extranjeras. Se persiste solo cuando hubo
+    // descuento de beca; null en el resto (el cobro usa el PrecioDolares vigente de la categoría).
+    public decimal? PrecioFinalDolares { get; set; }
     public string Estado { get; set; } = "Pendiente";
     public string? Observaciones { get; set; }
     public DateTime FechaInscripcion { get; set; } = DateTime.UtcNow;

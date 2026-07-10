@@ -196,8 +196,8 @@ const MisInscripcionesPage = () => {
                                   clientId={paypalConfig.clientId}
                                   currency={paypalConfig.moneda || 'USD'}
                                   amount={insc.montoUsd}
-                                  createInscripcion={() => Promise.resolve(insc.id)}
-                                  onSuccess={(orderId, inscId) => onPayPalSuccess(orderId, inscId, insc.montoUsd ?? 0)}
+                                  createInscripcion={() => Promise.resolve({ inscripcionId: insc.id, amount: insc.montoUsd ?? 0 })}
+                                  onSuccess={(orderId, inscId, amount) => onPayPalSuccess(orderId, inscId, amount)}
                                 />
                                 <div className="text-center mt-2">
                                   <span className="text-sm text-slate-600">

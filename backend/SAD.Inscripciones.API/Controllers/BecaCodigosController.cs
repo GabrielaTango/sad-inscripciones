@@ -10,10 +10,12 @@ namespace SAD.Inscripciones.API.Controllers;
 public class BecaCodigosController : ControllerBase
 {
     private readonly IBecaCodigoService _service;
+    private readonly IBecaEventoService _becaEventoService;
 
-    public BecaCodigosController(IBecaCodigoService service)
+    public BecaCodigosController(IBecaCodigoService service, IBecaEventoService becaEventoService)
     {
         _service = service;
+        _becaEventoService = becaEventoService;
     }
 
     [HttpGet]
@@ -46,6 +48,17 @@ public class BecaCodigosController : ControllerBase
             return NotFound(new { error = "Código no encontrado." });
         if (becaCodigo.Usado)
             return BadRequest(new { error = "El código ya fue utilizado." });
-        return Ok(new { valido = true, becaEventoId = becaCodigo.BecaEventoId });
+
+        // Devolvemos el tipo/valor del descuento para que la pantalla de inscripción pueda
+        // reflejarlo en el precio (necesario en el flujo en dólares / PayPal).
+        var becaEvento = await _becaEventoService.GetByIdAsync(becaCodigo.BecaEventoId);
+        return Ok(new
+        {
+            valido = true,
+            becaEventoId = becaCodigo.BecaEventoId,
+            eventoId = becaEvento.EventoId,
+            tipoDescuento = becaEvento.TipoDescuento,
+            valor = becaEvento.Valor,
+        });
     }
 }

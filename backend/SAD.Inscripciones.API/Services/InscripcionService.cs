@@ -146,7 +146,14 @@ public class InscripcionService : IInscripcionService
             if (becaEvento.TipoDescuento == "Porcentaje")
                 descuentoBeca = precioBase * becaEvento.Valor / 100m;
             else
+            {
+                // Las becas de importe fijo están expresadas en pesos y no tienen una
+                // conversión válida a un cobro en dólares, así que no se aceptan para
+                // categorías extranjeras (que se cobran en USD vía PayPal).
+                if (tipoAlumno.Extranjero)
+                    throw new BusinessException("Las becas de importe fijo no se aplican a categorías con cobro en dólares. Usá una beca de tipo porcentaje.");
                 descuentoBeca = becaEvento.Valor;
+            }
 
             if (!becaEvento.Acumulable)
             {
@@ -215,6 +222,19 @@ public class InscripcionService : IInscripcionService
             montoReserva = Math.Round(precioFinal * 0.3m, 0);
         }
 
+        // Monto final en USD para categorías extranjeras con beca (se cobra por PayPal). El
+        // descuento se aplica sobre el precio en dólares y solo para becas de tipo porcentaje
+        // (las de importe fijo ya se rechazaron arriba). Se persiste solo cuando hubo descuento:
+        // sin beca queda null y el cobro usa el PrecioDolares vigente de la categoría.
+        decimal? precioFinalDolares = null;
+        if (tipoAlumno.Extranjero && eventoPrecio.PrecioDolares.HasValue
+            && becaEvento?.TipoDescuento == "Porcentaje")
+        {
+            var precioDolares = eventoPrecio.PrecioDolares.Value;
+            var descuentoDolares = precioDolares * becaEvento.Valor / 100m;
+            precioFinalDolares = Math.Max(0, precioDolares - descuentoDolares);
+        }
+
         var inscripcion = new Inscripcion
         {
             EventoId = dto.EventoId,
@@ -231,6 +251,7 @@ public class InscripcionService : IInscripcionService
             PrecioFinalCuotas = precioFinalCuotas,
             CantidadCuotas = cantidadCuotas,
             MontoReserva = montoReserva,
+            PrecioFinalDolares = precioFinalDolares,
             Estado = "Pendiente",
             FechaInscripcion = DateTime.UtcNow,
             FechaNacimiento = dto.FechaNacimiento,

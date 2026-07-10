@@ -62,6 +62,8 @@ const InscripcionPage = () => {
   // Se incrementa en cada submit con errores para disparar el scroll al primer campo invalido.
   const [scrollTick, setScrollTick] = useState(0)
   const [becaValida, setBecaValida] = useState<boolean | null>(null)
+  // Datos del descuento de la beca validada (para reflejarlo en el precio en dólares).
+  const [becaInfo, setBecaInfo] = useState<{ eventoId: number; tipoDescuento: string; valor: number } | null>(null)
   const [cuponesDisponibles, setCuponesDisponibles] = useState<PromocionCuponDisponible[]>([])
   const [aceptaTerminos, setAceptaTerminos] = useState(false)
   const [modalidadPago, setModalidadPago] = useState<'unico' | 'cuotas' | 'reserva'>('unico')
@@ -143,6 +145,16 @@ const InscripcionPage = () => {
   // Categoría extranjera -> cobro en USD vía PayPal (en lugar de MercadoPago).
   const esExtranjero = !!tiposAlumno.find(t => t.id === form.tipoAlumnoId)?.extranjero
   const montoUsd = selectedPrecio?.precioDolares ?? null
+
+  // La beca solo se refleja en el precio en dólares si es de este evento y de tipo porcentaje
+  // (las de importe fijo están en pesos y no se aplican al cobro en USD; el backend las rechaza).
+  const becaAplicaEvento = becaValida === true && becaInfo?.eventoId === id
+  const becaPorcentajeUsd = becaAplicaEvento && becaInfo?.tipoDescuento === 'Porcentaje'
+  const montoUsdFinal = useMemo(() => {
+    if (montoUsd == null) return null
+    if (becaPorcentajeUsd && becaInfo) return Math.max(0, montoUsd - (montoUsd * becaInfo.valor) / 100)
+    return montoUsd
+  }, [montoUsd, becaPorcentajeUsd, becaInfo])
 
   // Sin DNI validado como socio -> solo categorias "no socio". Validado como socio -> solo "socio".
   // Si es socio pero el evento no tiene precios de socio, cae a los de no socio.
@@ -248,10 +260,12 @@ const InscripcionPage = () => {
   const handleValidarBeca = async () => {
     if (!form.codigoBeca) return
     try {
-      await becaCodigosService.validarCodigo(form.codigoBeca)
+      const res = await becaCodigosService.validarCodigo(form.codigoBeca)
       setBecaValida(true)
+      setBecaInfo({ eventoId: res.eventoId, tipoDescuento: res.tipoDescuento, valor: res.valor })
     } catch {
       setBecaValida(false)
+      setBecaInfo(null)
     }
   }
 
@@ -339,11 +353,12 @@ const InscripcionPage = () => {
 
   // --- Flujo PayPal (socios extranjeros) ---
   // Crea la inscripción pendiente y devuelve su id; se invoca al iniciar el pago en PayPal.
-  const crearInscripcionPayPal = async (): Promise<number> => {
+  const crearInscripcionPayPal = async (): Promise<{ inscripcionId: number; amount: number }> => {
     setError('')
     try {
       const result = await inscripcionesService.create({ ...form, cuotas: 1, modalidadPago: 'unico' })
-      return result.id
+      // El backend devuelve el monto final en USD con la beca ya aplicada; es el que se cobra.
+      return { inscripcionId: result.id, amount: result.montoUsd ?? montoUsdFinal ?? 0 }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al registrar la inscripcion.'
       if (msg.includes('Ya existe una inscripción para este evento')) {
@@ -354,9 +369,9 @@ const InscripcionPage = () => {
     }
   }
 
-  const onPayPalSuccess = async (orderId: string, inscripcionId: number) => {
+  const onPayPalSuccess = async (orderId: string, inscripcionId: number, amount: number) => {
     try {
-      await inscripcionesService.confirmarPagoPayPal(inscripcionId, orderId, montoUsd ?? 0)
+      await inscripcionesService.confirmarPagoPayPal(inscripcionId, orderId, amount)
     } catch {
       // El pago ya se capturó en PayPal; si la confirmación falla igual mostramos el resultado.
     }
@@ -589,7 +604,7 @@ const InscripcionPage = () => {
                       <div className="md:col-span-12">
                         <label className="form-label">Codigo de Beca</label>
                         <div className="flex">
-                          <input type="text" className="form-input" placeholder="Ingrese codigo si tiene uno" value={form.codigoBeca || ''} onChange={(e) => { setForm({ ...form, codigoBeca: e.target.value }); setBecaValida(null) }} />
+                          <input type="text" className="form-input" placeholder="Ingrese codigo si tiene uno" value={form.codigoBeca || ''} onChange={(e) => { setForm({ ...form, codigoBeca: e.target.value }); setBecaValida(null); setBecaInfo(null) }} />
                           <button type="button" className="btn-outline" onClick={handleValidarBeca} disabled={!form.codigoBeca}>Validar</button>
                         </div>
                         {becaValida === true && <span className="text-sm text-green-600">Codigo valido</span>}
@@ -634,32 +649,43 @@ const InscripcionPage = () => {
 
                       <div className="md:col-span-12 mt-4">
                         {selectedPrecio && esExtranjero ? (
-                          montoUsd && montoUsd > 0 ? (
-                            paypalConfig?.clientId ? (
-                              <>
-                                <div className="mb-3 text-slate-700">
-                                  Pago en dólares: <strong>USD {montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-                                </div>
-                                <PayPalCheckout
-                                  clientId={paypalConfig.clientId}
-                                  currency={paypalConfig.moneda || 'USD'}
-                                  amount={montoUsd}
-                                  createInscripcion={crearInscripcionPayPal}
-                                  onSuccess={onPayPalSuccess}
-                                  validate={validarPayPal}
-                                />
-                                <div className="text-center mt-2">
-                                  <span className="text-sm text-slate-600">
-                                    <ShieldCheck className="inline mr-1" size={14} />
-                                    Pago seguro procesado por PayPal
-                                  </span>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="alert-danger mb-0">El pago con PayPal no está disponible en este momento.</div>
-                            )
-                          ) : (
+                          !montoUsd || montoUsd <= 0 ? (
                             <div className="alert-danger mb-0">Esta categoría no tiene un precio en dólares configurado.</div>
+                          ) : montoUsdFinal === 0 ? (
+                            // Beca que cubre el 100%: inscripción sin costo, no pasa por PayPal.
+                            <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
+                              {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><Send className="inline mr-2" size={18} />Inscribirse (sin costo)</>}
+                            </button>
+                          ) : paypalConfig?.clientId ? (
+                            <>
+                              <div className="mb-3 text-slate-700">
+                                Pago en dólares: <strong>USD {(montoUsdFinal ?? montoUsd).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+                                {becaPorcentajeUsd && montoUsdFinal != null && montoUsdFinal < montoUsd && (
+                                  <span className="ml-2 text-sm text-slate-500 line-through">USD {montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                                )}
+                              </div>
+                              {becaAplicaEvento && becaInfo?.tipoDescuento !== 'Porcentaje' && (
+                                <div className="alert-info mb-3 text-sm text-slate-600">
+                                  El código de beca es de importe fijo y no puede aplicarse a un pago en dólares.
+                                </div>
+                              )}
+                              <PayPalCheckout
+                                clientId={paypalConfig.clientId}
+                                currency={paypalConfig.moneda || 'USD'}
+                                amount={montoUsdFinal ?? montoUsd}
+                                createInscripcion={crearInscripcionPayPal}
+                                onSuccess={onPayPalSuccess}
+                                validate={validarPayPal}
+                              />
+                              <div className="text-center mt-2">
+                                <span className="text-sm text-slate-600">
+                                  <ShieldCheck className="inline mr-1" size={14} />
+                                  Pago seguro procesado por PayPal
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="alert-danger mb-0">El pago con PayPal no está disponible en este momento.</div>
                           )
                         ) : selectedPrecio && selectedPrecio.precioBase > 0 ? (
                           <>
