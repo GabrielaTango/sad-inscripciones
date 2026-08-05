@@ -240,7 +240,8 @@ const InscripcionPage = () => {
   useEffect(() => {
     if (isAuthenticated) return
     const doc = form.documento.trim()
-    if (!doc || doc === ultimoDocValidado.current) return
+    // Solo consultamos con un documento completo: evita lookups con datos parciales.
+    if (!/^\d{7,8}$/.test(doc) || doc === ultimoDocValidado.current) return
     const timer = setTimeout(() => {
       ultimoDocValidado.current = doc
       validarDocumentoRef.current(doc)
@@ -297,6 +298,11 @@ const InscripcionPage = () => {
       const v = form[f.key]
       const vacio = f.key === 'tipoAlumnoId' ? !v : !String(v ?? '').trim()
       if (vacio) next[f.key] = 'Este campo es obligatorio'
+    }
+    // El documento del socio se autocompleta con el CUIT (11 digitos) y es readOnly,
+    // asi que la regla de 7 u 8 digitos solo aplica a lo que se carga a mano.
+    if (!next.documento && !socioDataCargada && !/^\d{7,8}$/.test(form.documento.trim())) {
+      next.documento = 'El documento debe tener 7 u 8 digitos numericos'
     }
     if (!next.email && form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = 'Email invalido'
@@ -474,7 +480,7 @@ const InscripcionPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-4">
                         <label className="form-label">Documento *</label>
-                        <input type="text" className={cls('documento', 'form-input')} value={form.documento} onChange={(e) => setField('documento', e.target.value)} readOnly={socioDataCargada} />
+                        <input type="text" inputMode="numeric" maxLength={8} placeholder="12345678" className={cls('documento', 'form-input')} value={form.documento} onChange={(e) => setField('documento', e.target.value.replace(/\D/g, '').slice(0, 8))} readOnly={socioDataCargada} />
                         {errorMsg('documento')}
                       </div>
                       <div className="md:col-span-4">
@@ -708,7 +714,7 @@ const InscripcionPage = () => {
 
                             {modalidadPago === 'unico' && (
                               <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
-                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />Pagar ${selectedPrecio.precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
+                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />Confirmar ${selectedPrecio.precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
                               </button>
                             )}
 
