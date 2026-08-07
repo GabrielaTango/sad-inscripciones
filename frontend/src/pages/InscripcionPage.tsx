@@ -240,8 +240,7 @@ const InscripcionPage = () => {
   useEffect(() => {
     if (isAuthenticated) return
     const doc = form.documento.trim()
-    // Solo consultamos con un documento completo: evita lookups con datos parciales.
-    if (!/^\d{7,8}$/.test(doc) || doc === ultimoDocValidado.current) return
+    if (!/^[A-Za-z0-9]{1,20}$/.test(doc) || doc === ultimoDocValidado.current) return
     const timer = setTimeout(() => {
       ultimoDocValidado.current = doc
       validarDocumentoRef.current(doc)
@@ -300,9 +299,10 @@ const InscripcionPage = () => {
       if (vacio) next[f.key] = 'Este campo es obligatorio'
     }
     // El documento del socio se autocompleta con el CUIT (11 digitos) y es readOnly,
-    // asi que la regla de 7 u 8 digitos solo aplica a lo que se carga a mano.
-    if (!next.documento && !socioDataCargada && !/^\d{7,8}$/.test(form.documento.trim())) {
-      next.documento = 'El documento debe tener 7 u 8 digitos numericos'
+    // asi que la regla de formato solo aplica a lo que se carga a mano. Acepta DNI y
+    // pasaporte: alfanumerico de hasta 20 (el largo de la columna Documento).
+    if (!next.documento && !socioDataCargada && !/^[A-Za-z0-9]{1,20}$/.test(form.documento.trim())) {
+      next.documento = 'El documento debe tener hasta 20 caracteres alfanumericos'
     }
     if (!next.email && form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = 'Email invalido'
@@ -479,8 +479,8 @@ const InscripcionPage = () => {
                     <div className="border-t border-slate-200 mb-3"></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                       <div className="md:col-span-4">
-                        <label className="form-label">Documento *</label>
-                        <input type="text" inputMode="numeric" maxLength={8} placeholder="12345678" className={cls('documento', 'form-input')} value={form.documento} onChange={(e) => setField('documento', e.target.value.replace(/\D/g, '').slice(0, 8))} readOnly={socioDataCargada} />
+                        <label className="form-label">Número de documento o Pasaporte *</label>
+                        <input type="text" maxLength={20} placeholder="12345678" className={cls('documento', 'form-input')} value={form.documento} onChange={(e) => setField('documento', e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 20))} readOnly={socioDataCargada} />
                         {errorMsg('documento')}
                       </div>
                       <div className="md:col-span-4">

@@ -57,6 +57,7 @@ installer/output/
 installer/obj/
 *.msi
 *.wixpdb
+clipboard
 
 # Imágenes subidas por usuarios (no van a git)
 backend/SAD.Inscripciones.API/wwwroot/uploads/email/
