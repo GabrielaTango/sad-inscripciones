@@ -73,7 +73,7 @@
 
   /* ---- Forms (newTheme style: rounded-xl, slate borders, blue focus) ---- */
   .form-input {
-    @apply w-full px-4 py-3 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:bg-slate-100 disabled:cursor-not-allowed;
+    @apply w-full px-4 py-3 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:bg-slate-100 disabled:cursor-not-allowed read-only:bg-slate-100 read-only:text-slate-500 read-only:cursor-not-allowed read-only:focus:ring-0 read-only:focus:border-slate-300;
   }
 
   .form-select {

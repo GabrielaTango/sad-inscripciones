@@ -246,8 +246,6 @@ export interface InscripcionForm {
   especialidad?: string
   institucion?: string
   sector?: string
-  cuotas?: number
-  modalidadPago?: string
 }
 
 export interface PagoForm {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { CheckCircle, CreditCard, Send, ShieldCheck, BookmarkCheck, CalendarOff, AlertCircle } from 'lucide-react'
+import { CheckCircle, Send, CalendarOff, AlertCircle } from 'lucide-react'
 import { eventosService } from '../services/eventosService'
 import { eventoPreciosService } from '../services/eventoPreciosService'
 import { tiposAlumnoService } from '../services/tiposAlumnoService'
@@ -9,10 +9,8 @@ import { becaCodigosService } from '../services/becaCodigosService'
 import { promocionCuponesService, type PromocionCuponDisponible } from '../services/promocionCuponesService'
 import { provinciasService } from '../services/provinciasService'
 import { authService } from '../services/authService'
-import { configuracionPayPalService } from '../services/configuracionPayPalService'
-import PayPalCheckout from '../components/PayPalCheckout'
 import { useAuth } from '../context/AuthContext'
-import type { Evento, EventoPrecio, TipoAlumno, InscripcionForm, Provincia, ConfiguracionPayPalPublic } from '../types/models'
+import type { Evento, EventoPrecio, TipoAlumno, InscripcionForm, Provincia } from '../types/models'
 
 // Clasifica un TipoAlumno segun su nombre. El prefijo "NO" es el diferenciador:
 // "NO SOCIO" / "NO SOCIO EXTRANJERO" -> no-socio ; "SOCIO" / "SOCIO EXTRANJERO" -> socio.
@@ -66,12 +64,14 @@ const InscripcionPage = () => {
   const [becaInfo, setBecaInfo] = useState<{ eventoId: number; tipoDescuento: string; valor: number } | null>(null)
   const [cuponesDisponibles, setCuponesDisponibles] = useState<PromocionCuponDisponible[]>([])
   const [aceptaTerminos, setAceptaTerminos] = useState(false)
-  const [modalidadPago, setModalidadPago] = useState<'unico' | 'cuotas' | 'reserva'>('unico')
-  const [paypalConfig, setPaypalConfig] = useState<ConfiguracionPayPalPublic | null>(null)
 
   // Socio detectado
   const [esSocio, setEsSocio] = useState(false)
   const [socioDataCargada, setSocioDataCargada] = useState(false)
+  // Nombre / apellido traidos del padron de socios: quedan readOnly para que no se editen.
+  // Por campo, porque el socio puede no tener alguno de los dos cargado en Tango y en ese
+  // caso el dato lo tiene que poder escribir la persona.
+  const [camposSocio, setCamposSocio] = useState({ nombre: false, apellido: false })
 
   // Estado post-inscripcion
   const [sinCosto, setSinCosto] = useState(false)
@@ -90,14 +90,13 @@ const InscripcionPage = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [ev, prec, tipos, provs, ppCfg] = await Promise.all([
+        const [ev, prec, tipos, provs] = await Promise.all([
           eventosService.getById(id),
           eventoPreciosService.getByEventoId(id),
           tiposAlumnoService.getAll().catch(() => [] as TipoAlumno[]),
           provinciasService.getAll().catch(() => [] as Provincia[]),
-          configuracionPayPalService.getPublic().catch(() => null),
         ])
-        setEvento(ev); setPrecios(prec); setTiposAlumno(tipos); setProvincias(provs); setPaypalConfig(ppCfg)
+        setEvento(ev); setPrecios(prec); setTiposAlumno(tipos); setProvincias(provs)
 
         if (isAuthenticated) {
           try {
@@ -115,6 +114,7 @@ const InscripcionPage = () => {
             }
             setEsSocio(true)
             setSocioDataCargada(true)
+            setCamposSocio({ nombre: !!socioData.nombre, apellido: !!socioData.apellido })
             setForm(prev => ({
               ...prev,
               documento: socioData.documento || prev.documento,
@@ -155,6 +155,12 @@ const InscripcionPage = () => {
     if (becaPorcentajeUsd && becaInfo) return Math.max(0, montoUsd - (montoUsd * becaInfo.valor) / 100)
     return montoUsd
   }, [montoUsd, becaPorcentajeUsd, becaInfo])
+
+  // La inscripcion tiene un importe a pagar (en pesos o en dolares). Con beca del 100% o
+  // categoria gratuita queda en false: se confirma sola y no pasa por Mis Inscripciones.
+  const conCosto = !!selectedPrecio && (esExtranjero
+    ? (montoUsdFinal ?? montoUsd ?? 0) > 0
+    : selectedPrecio.precioBase > 0)
 
   // Sin DNI validado como socio -> solo categorias "no socio". Validado como socio -> solo "socio".
   // Si es socio pero el evento no tiene precios de socio, cae a los de no socio.
@@ -208,6 +214,7 @@ const InscripcionPage = () => {
     try {
       const socioData = await authService.getSocioDataByCuit(doc)
       setEsSocio(true)
+      setCamposSocio({ nombre: !!socioData.nombre, apellido: !!socioData.apellido })
 
       setForm(prev => ({
         ...prev,
@@ -217,6 +224,7 @@ const InscripcionPage = () => {
         codigoPostal: socioData.codigoPostal || prev.codigoPostal,
         provincia: socioData.provincia || prev.provincia,
       }))
+      setErrors(prev => (prev.nombre || prev.apellido ? { ...prev, nombre: '', apellido: '' } : prev))
     } catch {
       // No es socio: si los datos venian autocompletados de un socio, limpiamos solo
       // esos campos; lo que el usuario haya cargado a mano no se toca.
@@ -226,6 +234,7 @@ const InscripcionPage = () => {
         }))
       }
       setEsSocio(false)
+      setCamposSocio({ nombre: false, apellido: false })
     }
     await loadCuponesDisponibles(doc)
   }
@@ -330,7 +339,9 @@ const InscripcionPage = () => {
       </p>
     ) : null
 
-  const handleSubmit = async (cuotas: number) => {
+  // Registra la inscripcion (queda Pendiente, sin forma de pago elegida) y manda a
+  // Mis Inscripciones, donde se elige como pagarla. Si no tiene costo, se confirma sola.
+  const handleSubmit = async () => {
     if (!validar()) {
       setScrollTick(t => t + 1)
       return
@@ -339,12 +350,12 @@ const InscripcionPage = () => {
     submittingRef.current = true
     setSubmitting(true); setError('')
     try {
-      const result = await inscripcionesService.create({ ...form, cuotas, modalidadPago })
-
-      if (result.initPoint) {
-        window.location.href = result.initPoint
-      } else {
+      const result = await inscripcionesService.create(form)
+      // El backend confirma sola la inscripcion sin costo (beca del 100%, categoria gratuita).
+      if (result.estado === 'Confirmada') {
         setSinCosto(true)
+      } else {
+        navigate(`/mis-inscripciones?documento=${encodeURIComponent(form.documento.trim())}&eventoId=${id}&nueva=1`)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al procesar la inscripcion.'
@@ -355,39 +366,6 @@ const InscripcionPage = () => {
       }
       setError(msg)
     } finally { submittingRef.current = false; setSubmitting(false) }
-  }
-
-  // --- Flujo PayPal (socios extranjeros) ---
-  // Crea la inscripción pendiente y devuelve su id; se invoca al iniciar el pago en PayPal.
-  const crearInscripcionPayPal = async (): Promise<{ inscripcionId: number; amount: number }> => {
-    setError('')
-    try {
-      const result = await inscripcionesService.create({ ...form, cuotas: 1, modalidadPago: 'unico' })
-      // El backend devuelve el monto final en USD con la beca ya aplicada; es el que se cobra.
-      return { inscripcionId: result.id, amount: result.montoUsd ?? montoUsdFinal ?? 0 }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al registrar la inscripcion.'
-      if (msg.includes('Ya existe una inscripción para este evento')) {
-        navigate(`/mis-inscripciones?documento=${encodeURIComponent(form.documento.trim())}&eventoId=${id}`)
-      }
-      setError(msg)
-      throw err
-    }
-  }
-
-  const onPayPalSuccess = async (orderId: string, inscripcionId: number, amount: number) => {
-    try {
-      await inscripcionesService.confirmarPagoPayPal(inscripcionId, orderId, amount)
-    } catch {
-      // El pago ya se capturó en PayPal; si la confirmación falla igual mostramos el resultado.
-    }
-    navigate('/pago/resultado?status=approved')
-  }
-
-  const validarPayPal = (): string | null => {
-    if (!form.tipoAlumnoId) return 'Seleccioná una categoría.'
-    if (evento?.terminosArchivo && !aceptaTerminos) return 'Debés aceptar los términos y condiciones.'
-    return null
   }
 
   if (loading) return <div className="text-center py-16"><div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>
@@ -485,14 +463,22 @@ const InscripcionPage = () => {
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Apellido *</label>
-                        <input type="text" className={cls('apellido', 'form-input')} value={form.apellido} onChange={(e) => setField('apellido', e.target.value)} readOnly={socioDataCargada} />
+                        <input type="text" className={cls('apellido', 'form-input')} value={form.apellido} onChange={(e) => setField('apellido', e.target.value)} readOnly={socioDataCargada || camposSocio.apellido} />
                         {errorMsg('apellido')}
                       </div>
                       <div className="md:col-span-4">
                         <label className="form-label">Nombres *</label>
-                        <input type="text" className={cls('nombre', 'form-input')} value={form.nombre} onChange={(e) => setField('nombre', e.target.value)} readOnly={socioDataCargada} />
+                        <input type="text" className={cls('nombre', 'form-input')} value={form.nombre} onChange={(e) => setField('nombre', e.target.value)} readOnly={socioDataCargada || camposSocio.nombre} />
                         {errorMsg('nombre')}
                       </div>
+                      {esSocio && (camposSocio.nombre || camposSocio.apellido) && (
+                        <div className="md:col-span-12 -mt-2">
+                          <p className="text-sm text-slate-500">
+                            Nombre y apellido se toman del padron de socios y no pueden modificarse.
+                            Si hay un error, comunicate con la SAD.
+                          </p>
+                        </div>
+                      )}
                       <div className="md:col-span-6">
                         <label className="form-label">Categoria *</label>
                         <select className={cls('tipoAlumnoId', 'form-select')} value={form.tipoAlumnoId} onChange={(e) => setField('tipoAlumnoId', Number(e.target.value))}>
@@ -653,98 +639,45 @@ const InscripcionPage = () => {
                         </div>
                       )}
 
-                      <div className="md:col-span-12 mt-4">
-                        {selectedPrecio && esExtranjero ? (
-                          !montoUsd || montoUsd <= 0 ? (
-                            <div className="alert-danger mb-0">Esta categoría no tiene un precio en dólares configurado.</div>
-                          ) : montoUsdFinal === 0 ? (
-                            // Beca que cubre el 100%: inscripción sin costo, no pasa por PayPal.
-                            <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
-                              {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><Send className="inline mr-2" size={18} />Inscribirse (sin costo)</>}
-                            </button>
-                          ) : paypalConfig?.clientId ? (
-                            <>
-                              <div className="mb-3 text-slate-700">
-                                Pago en dólares: <strong>USD {(montoUsdFinal ?? montoUsd).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-                                {becaPorcentajeUsd && montoUsdFinal != null && montoUsdFinal < montoUsd && (
-                                  <span className="ml-2 text-sm text-slate-500 line-through">USD {montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                                )}
-                              </div>
-                              {becaAplicaEvento && becaInfo?.tipoDescuento !== 'Porcentaje' && (
-                                <div className="alert-info mb-3 text-sm text-slate-600">
-                                  El código de beca es de importe fijo y no puede aplicarse a un pago en dólares.
+                      {/* Importe informativo: el medio de pago se elige despues, en Mis Inscripciones. */}
+                      {selectedPrecio && (
+                        <div className="md:col-span-12 mt-2">
+                          {esExtranjero ? (
+                            !montoUsd || montoUsd <= 0 ? (
+                              <div className="alert-danger mb-0">Esta categoría no tiene un precio en dólares configurado.</div>
+                            ) : (
+                              <>
+                                <div className="text-slate-700">
+                                  Importe: <strong>USD {(montoUsdFinal ?? montoUsd).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+                                  {becaPorcentajeUsd && montoUsdFinal != null && montoUsdFinal < montoUsd && (
+                                    <span className="ml-2 text-sm text-slate-500 line-through">USD {montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                                  )}
                                 </div>
-                              )}
-                              <PayPalCheckout
-                                clientId={paypalConfig.clientId}
-                                currency={paypalConfig.moneda || 'USD'}
-                                amount={montoUsdFinal ?? montoUsd}
-                                createInscripcion={crearInscripcionPayPal}
-                                onSuccess={onPayPalSuccess}
-                                validate={validarPayPal}
-                              />
-                              <div className="text-center mt-2">
-                                <span className="text-sm text-slate-600">
-                                  <ShieldCheck className="inline mr-1" size={14} />
-                                  Pago seguro procesado por PayPal
-                                </span>
-                              </div>
-                            </>
+                                {becaAplicaEvento && becaInfo?.tipoDescuento !== 'Porcentaje' && (
+                                  <div className="alert-info mt-2 mb-0 text-sm text-slate-600">
+                                    El código de beca es de importe fijo y no puede aplicarse a un pago en dólares.
+                                  </div>
+                                )}
+                              </>
+                            )
+                          ) : selectedPrecio.precioBase > 0 ? (
+                            <div className="text-slate-700">
+                              Importe: <strong>${selectedPrecio.precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
+                            </div>
                           ) : (
-                            <div className="alert-danger mb-0">El pago con PayPal no está disponible en este momento.</div>
-                          )
-                        ) : selectedPrecio && selectedPrecio.precioBase > 0 ? (
-                          <>
-                            <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3">
-                              <label className="inline-flex items-center gap-2 cursor-pointer">
-                                <input className="form-check-input" type="radio" name="modalidadPago" value="unico" checked={modalidadPago === 'unico'} onChange={() => setModalidadPago('unico')} />
-                                <span className="text-sm">En un Pago</span>
-                              </label>
-                              {selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
-                                <label className="inline-flex items-center gap-2 cursor-pointer">
-                                  <input className="form-check-input" type="radio" name="modalidadPago" value="cuotas" checked={modalidadPago === 'cuotas'} onChange={() => setModalidadPago('cuotas')} />
-                                  <span className="text-sm">En cuotas</span>
-                                </label>
-                              )}
-                              <label className="inline-flex items-center gap-2 cursor-pointer">
-                                <input className="form-check-input" type="radio" name="modalidadPago" value="reserva" checked={modalidadPago === 'reserva'} onChange={() => setModalidadPago('reserva')} />
-                                <span className="text-sm">Reservar Vacante</span>
-                              </label>
-                            </div>
+                            <div className="text-slate-700">Esta categoría no tiene costo.</div>
+                          )}
+                        </div>
+                      )}
 
-                            {modalidadPago === 'unico' && (
-                              <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
-                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />Confirmar ${selectedPrecio.precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
-                              </button>
-                            )}
-
-                            {modalidadPago === 'cuotas' && selectedPrecio.precioCuotas && selectedPrecio.precioCuotas > 0 && (
-                              <button type="button" className="btn-outline-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(selectedPrecio.cantidadCuotas || 6)}>
-                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><CreditCard className="inline mr-2" size={18} />{selectedPrecio.cantidadCuotas || 6} cuotas de ${(selectedPrecio.precioCuotas / (selectedPrecio.cantidadCuotas || 6)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</>}
-                              </button>
-                            )}
-
-                            {modalidadPago === 'reserva' && (
-                              <p className="text-xl font-semibold text-red-600 text-center mb-2">No reembolsable</p>
-                            )}
-
-                            {modalidadPago === 'reserva' && (
-                              <button type="button" className="btn-accent btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
-                                {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><BookmarkCheck className="inline mr-2" size={18} />Reservar vacante por ${Math.round(selectedPrecio.precioBase * 0.3).toLocaleString('es-AR')}</>}
-                              </button>
-                            )}
-
-                            <div className="text-center mt-2">
-                              <span className="text-sm text-slate-600">
-                                <ShieldCheck className="inline mr-1" size={14} />
-                                Pago seguro procesado por Mercado Pago
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={() => handleSubmit(1)}>
-                            {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><Send className="inline mr-2" size={18} />Inscribirse</>}
-                          </button>
+                      <div className="md:col-span-12 mt-4">
+                        <button type="button" className="btn-primary btn-lg w-full" disabled={submitting || (!!evento.terminosArchivo && !aceptaTerminos)} onClick={handleSubmit}>
+                          {submitting ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"></span>Procesando...</> : <><Send className="inline mr-2" size={18} />Inscribirse</>}
+                        </button>
+                        {conCosto && (
+                          <p className="text-center text-sm text-slate-600 mt-2">
+                            Al inscribirte vas a poder elegir cómo pagar desde Mis Inscripciones.
+                          </p>
                         )}
                       </div>
                     </div>

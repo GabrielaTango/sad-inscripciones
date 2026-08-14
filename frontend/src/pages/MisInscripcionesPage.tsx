@@ -6,8 +6,12 @@ import type { InscripcionPendiente } from '../services/inscripcionesService'
 import { eventosService } from '../services/eventosService'
 import { configuracionPayPalService } from '../services/configuracionPayPalService'
 import type { Evento, ConfiguracionPayPalPublic } from '../types/models'
-import { Search, Info, Calendar, MapPin, User, CreditCard, ShieldCheck } from 'lucide-react'
+import { Search, Info, Calendar, MapPin, User, CreditCard, ShieldCheck, BookmarkCheck, CheckCircle } from 'lucide-react'
 import PayPalCheckout from '../components/PayPalCheckout'
+
+// Opciones de pago que puede tener una inscripcion; identifican cada boton dentro de la tarjeta.
+type OpcionPago = 'unico' | 'cuotas' | 'reserva'
+const pagoKey = (inscripcionId: number, opcion: OpcionPago) => `${inscripcionId}:${opcion}`
 
 const MisInscripcionesPage = () => {
   const { isAuthenticated, cuit } = useAuth()
@@ -20,7 +24,9 @@ const MisInscripcionesPage = () => {
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [error, setError] = useState('')
-  const [payingId, setPayingId] = useState<number | null>(null)
+  // Boton de pago que esta generando el link, identificado por inscripcion + opcion, para que
+  // el spinner salga solo en el que se apreto (una inscripcion tiene varios botones de pago).
+  const [payingKey, setPayingKey] = useState<string | null>(null)
   const [paypalConfig, setPaypalConfig] = useState<ConfiguracionPayPalPublic | null>(null)
 
   // Load active events for the select (only when not logged in)
@@ -44,6 +50,28 @@ const MisInscripcionesPage = () => {
     }
     navigate('/pago/resultado?status=approved')
   }
+
+  // Genera el link de pago en Mercado Pago y redirige. 'reserva' cobra solo el anticipo.
+  const irAPagar = async (inscripcionId: number, cuotas: number, opcion: OpcionPago) => {
+    setPayingKey(pagoKey(inscripcionId, opcion))
+    setError('')
+    try {
+      const result = await inscripcionesService.generarPago(inscripcionId, cuotas, opcion === 'reserva' ? 'reserva' : undefined)
+      if (result.initPoint) window.location.href = result.initPoint
+      else { setError('No se pudo generar el link de pago.'); setPayingKey(null) }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al generar el pago')
+      setPayingKey(null)
+    }
+  }
+
+  // Al volver con el boton "atras" el navegador puede restaurar la pagina tal cual estaba
+  // (bfcache), con los botones todavia en "Generando...". pageshow dispara en ese caso.
+  useEffect(() => {
+    const limpiar = () => setPayingKey(null)
+    window.addEventListener('pageshow', limpiar)
+    return () => window.removeEventListener('pageshow', limpiar)
+  }, [])
 
   // Auto-search when logged in
   const searchByDoc = useCallback(async (doc: string, evId?: number) => {
@@ -75,7 +103,9 @@ const MisInscripcionesPage = () => {
     searchByDoc(docParam.trim(), evId)
   }, [isAuthenticated, searchParams, searchByDoc])
 
-  const vieneDeRedirect = !isAuthenticated && !!searchParams.get('documento')
+  // Recien inscripto: viene de completar el formulario y todavia tiene que elegir como pagar.
+  const esInscripcionNueva = searchParams.get('nueva') === '1'
+  const vieneDeRedirect = !isAuthenticated && !!searchParams.get('documento') && !esInscripcionNueva
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,6 +119,13 @@ const MisInscripcionesPage = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-16 md:py-24">
       <h2 className="font-bold text-slate-800 mb-4">Mis Inscripciones</h2>
+
+      {esInscripcionNueva && (
+        <div className="alert-success mb-4">
+          <CheckCircle className="inline w-4 h-4 mr-2" />
+          Tu inscripción fue registrada. Elegí abajo cómo querés pagarla para completarla.
+        </div>
+      )}
 
       {vieneDeRedirect && (
         <div className="alert-info mb-4">
@@ -214,31 +251,31 @@ const MisInscripcionesPage = () => {
                             <div className="flex flex-col gap-2">
                               <button
                                 className="btn-accent btn-sm"
-                                disabled={payingId !== null}
-                                onClick={async () => {
-                                  setPayingId(insc.id)
-                                  try {
-                                    const result = await inscripcionesService.generarPago(insc.id, 1)
-                                    if (result.initPoint) window.location.href = result.initPoint
-                                  } catch (err) { setError(err instanceof Error ? err.message : 'Error al generar el pago'); setPayingId(null) }
-                                }}
+                                disabled={payingKey !== null}
+                                onClick={() => irAPagar(insc.id, 1, 'unico')}
                               >
-                                {payingId === insc.id ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />1 pago de {formatCurrency(insc.precioFinal)}</>}
+                                {payingKey === pagoKey(insc.id, 'unico') ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />1 pago de {formatCurrency(insc.precioFinal)}</>}
                               </button>
                               {insc.precioFinalCuotas && insc.cantidadCuotas && (
                                 <button
                                   className="btn-outline-primary btn-sm"
-                                  disabled={payingId !== null}
-                                  onClick={async () => {
-                                    setPayingId(insc.id)
-                                    try {
-                                      const result = await inscripcionesService.generarPago(insc.id, insc.cantidadCuotas!)
-                                      if (result.initPoint) window.location.href = result.initPoint
-                                    } catch (err) { setError(err instanceof Error ? err.message : 'Error al generar el pago'); setPayingId(null) }
-                                  }}
+                                  disabled={payingKey !== null}
+                                  onClick={() => irAPagar(insc.id, insc.cantidadCuotas!, 'cuotas')}
                                 >
-                                  {payingId === insc.id ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />{insc.cantidadCuotas} pagos de {formatCurrency(insc.precioFinalCuotas / insc.cantidadCuotas)}</>}
+                                  {payingKey === pagoKey(insc.id, 'cuotas') ? <><span className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />{insc.cantidadCuotas} pagos de {formatCurrency(insc.precioFinalCuotas / insc.cantidadCuotas)}</>}
                                 </button>
+                              )}
+                              {insc.montoReservaSugerido > 0 && (
+                                <>
+                                  <button
+                                    className="btn-primary btn-sm"
+                                    disabled={payingKey !== null}
+                                    onClick={() => irAPagar(insc.id, 1, 'reserva')}
+                                  >
+                                    {payingKey === pagoKey(insc.id, 'reserva') ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><BookmarkCheck className="inline w-4 h-4 mr-1" />Reservar vacante por {formatCurrency(insc.montoReservaSugerido)}</>}
+                                  </button>
+                                  <small className="text-red-600 font-semibold text-center">La reserva no es reembolsable</small>
+                                </>
                               )}
                             </div>
                           )}
@@ -252,30 +289,18 @@ const MisInscripcionesPage = () => {
                                 <small className="text-slate-500 mb-1">Reserva pagada: {formatCurrency(insc.montoReserva)}</small>
                                 <button
                                   className="btn-primary btn-sm"
-                                  disabled={payingId !== null}
-                                  onClick={async () => {
-                                    setPayingId(insc.id)
-                                    try {
-                                      const result = await inscripcionesService.generarPago(insc.id, 1)
-                                      if (result.initPoint) window.location.href = result.initPoint
-                                    } catch (err) { setError(err instanceof Error ? err.message : 'Error al generar el pago'); setPayingId(null) }
-                                  }}
+                                  disabled={payingKey !== null}
+                                  onClick={() => irAPagar(insc.id, 1, 'unico')}
                                 >
-                                  {payingId === insc.id ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />Pagar resto {formatCurrency(resto)}</>}
+                                  {payingKey === pagoKey(insc.id, 'unico') ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />Pagar resto {formatCurrency(resto)}</>}
                                 </button>
                                 {restoCuota && restoCuota > 0 && insc.cantidadCuotas && (
                                   <button
                                     className="btn-outline-primary btn-sm"
-                                    disabled={payingId !== null}
-                                    onClick={async () => {
-                                      setPayingId(insc.id)
-                                      try {
-                                        const result = await inscripcionesService.generarPago(insc.id, insc.cantidadCuotas!)
-                                        if (result.initPoint) window.location.href = result.initPoint
-                                      } catch (err) { setError(err instanceof Error ? err.message : 'Error al generar el pago'); setPayingId(null) }
-                                    }}
+                                    disabled={payingKey !== null}
+                                    onClick={() => irAPagar(insc.id, insc.cantidadCuotas!, 'cuotas')}
                                   >
-                                    {payingId === insc.id ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />{insc.cantidadCuotas} cuotas de {formatCurrency(restoCuota)}</>}
+                                    {payingKey === pagoKey(insc.id, 'cuotas') ? <><span className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full inline-block mr-1"></span>Generando...</> : <><CreditCard className="inline w-4 h-4 mr-1" />{insc.cantidadCuotas} cuotas de {formatCurrency(restoCuota)}</>}
                                   </button>
                                 )}
                               </div>

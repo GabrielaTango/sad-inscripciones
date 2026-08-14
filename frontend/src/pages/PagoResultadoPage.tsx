@@ -40,6 +40,9 @@ const PagoResultadoPage = () => {
 
   const [confirmando, setConfirmando] = useState(false)
   const [confirmado, setConfirmado] = useState(false)
+  // Estado en el que quedo la inscripcion tras validar el pago: "Confirmada" con el total
+  // pago, "Reservada" cuando solo se cobro el anticipo.
+  const [estadoInscripcion, setEstadoInscripcion] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -48,7 +51,8 @@ const PagoResultadoPage = () => {
     const confirmar = async () => {
       setConfirmando(true)
       try {
-        await inscripcionesService.confirmarPago(Number(paymentId), externalReference || undefined)
+        const res = await inscripcionesService.confirmarPago(Number(paymentId), externalReference || undefined)
+        setEstadoInscripcion(res.estadoInscripcion)
         setConfirmado(true)
       } catch {
         setError('No se pudo confirmar el pago en el sistema. Contactanos con tu numero de inscripcion.')
@@ -60,6 +64,13 @@ const PagoResultadoPage = () => {
   }, [paymentId, externalReference])
 
   const config = statusConfig[status] || defaultStatus
+
+  // Pago de reserva: se cobro solo el anticipo, asi que la inscripcion queda reservada
+  // (no confirmada) y los textos de exito lo tienen que decir.
+  const esReserva = estadoInscripcion === 'Reservada'
+  const mensaje = esReserva && status === 'approved'
+    ? 'Tu pago fue procesado correctamente. Se realizo la reserva.'
+    : config.message
 
   return (
     <>
@@ -84,12 +95,12 @@ const PagoResultadoPage = () => {
                   <>
                     <config.icon className={`w-20 h-20 mx-auto ${config.iconClass}`} />
                     <h3 className="font-bold mt-3 text-slate-800">{config.title}</h3>
-                    <p className="text-slate-600 mt-2">{config.message}</p>
+                    <p className="text-slate-600 mt-2">{mensaje}</p>
 
                     {confirmado && status === 'approved' && (
                       <div className="alert-success mt-3">
                         <BadgeCheck className="inline-block w-5 h-5 mr-2" />
-                        Inscripcion confirmada en el sistema.
+                        {esReserva ? 'Reserva confirmada en el sistema.' : 'Inscripcion confirmada en el sistema.'}
                       </div>
                     )}
 

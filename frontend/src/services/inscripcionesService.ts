@@ -7,6 +7,8 @@ export interface InscripcionCreateResult {
   id: number
   precioFinal: number
   initPoint: string | null
+  // 'Pendiente' (hay que elegir como pagarla) o 'Confirmada' (quedo sin costo).
+  estado?: string
   preferenceId?: string
   message?: string
   paypal?: boolean
@@ -49,6 +51,8 @@ export interface InscripcionPendiente {
   precioFinalCuotas?: number
   cantidadCuotas?: number
   montoReserva?: number
+  // Cuánto costaría reservar la vacante (30% del precio final). Lo calcula el backend.
+  montoReservaSugerido: number
   estado: string
   fechaInscripcion: string
   eventoFechaInicio: string
@@ -67,7 +71,9 @@ export const inscripcionesService = {
     return api.get<InscripcionPendiente[]>(`${BASE}/pendientes?${params}`)
   },
   create: (data: InscripcionForm) => api.post<InscripcionCreateResult>(BASE, data),
-  generarPago: (id: number, cuotas: number = 1) => api.post<InscripcionCreateResult>(`${BASE}/${id}/generar-pago`, { cuotas }),
+  // modalidad 'reserva' cobra solo el anticipo del 30%; sin modalidad se cobra el total (o el saldo).
+  generarPago: (id: number, cuotas: number = 1, modalidad?: 'reserva') =>
+    api.post<InscripcionCreateResult>(`${BASE}/${id}/generar-pago`, { cuotas, modalidad }),
   getEstadoPago: (id: number) => api.get<EstadoPagoResult>(`${BASE}/${id}/estado-pago`),
   confirmarPago: (paymentId: number, externalReference?: string) =>
     api.post<ConfirmarPagoResult>(`${BASE}/confirmar-pago`, { paymentId, externalReference }),
