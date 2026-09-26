@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckCircle, Hourglass, XCircle, Info, Home, AlertTriangle, RefreshCw } from 'lucide-react'
+import { CheckCircle, Hourglass, XCircle, Info, Home, AlertTriangle, RefreshCw, BadgeCheck } from 'lucide-react'
 import { ventasProductoService } from '../services/ventasProductoService'
 import type { VentaProductoEstado } from '../types/models'
 import type { LucideIcon } from 'lucide-react'
@@ -9,8 +9,8 @@ const statusConfig: Record<string, { icon: LucideIcon; iconClass: string; title:
   approved: {
     icon: CheckCircle,
     iconClass: 'text-green-500',
-    title: '¡Pago aprobado!',
-    message: 'Tu pago fue procesado correctamente. Te enviaremos un mail de confirmación.',
+    title: '¡Compra realizada!',
+    message: 'Se concretó la compra. Tu pago fue procesado correctamente y te enviaremos un mail de confirmación.',
   },
   pending: {
     icon: Hourglass,
@@ -46,6 +46,7 @@ const ProductoPagoResultadoPage = () => {
   const [searchParams] = useSearchParams()
   const status = searchParams.get('status') || searchParams.get('collection_status') || ''
   const externalReference = searchParams.get('external_reference')
+  const paymentId = searchParams.get('payment_id') || searchParams.get('collection_id')
   const publicRef = extraerPublicRef(externalReference)
 
   const [verificando, setVerificando] = useState(false)
@@ -99,6 +100,13 @@ const ProductoPagoResultadoPage = () => {
                     <h3 className="font-bold mt-3 text-slate-800">{config.title}</h3>
                     <p className="text-slate-600 mt-2">{config.message}</p>
 
+                    {venta?.estado === 'Pagada' && (
+                      <div className="alert-success mt-3">
+                        <BadgeCheck className="inline-block w-5 h-5 mr-2" />
+                        Compra confirmada en el sistema.
+                      </div>
+                    )}
+
                     {error && (
                       <div className="alert-warning mt-3">
                         <AlertTriangle className="inline-block w-5 h-5 mr-2" />
@@ -111,9 +119,17 @@ const ProductoPagoResultadoPage = () => {
                         <p className="mb-1 text-sm text-slate-600">
                           <strong>Producto:</strong> {venta.productoNombre}
                         </p>
-                        <p className="mb-0 text-sm text-slate-600">
+                        <p className="mb-1 text-sm text-slate-600">
+                          <strong>A nombre de:</strong> {venta.nombre}
+                        </p>
+                        <p className="mb-1 text-sm text-slate-600">
                           <strong>Importe:</strong> ${venta.importe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                         </p>
+                        {paymentId && (
+                          <p className="mb-0 text-sm text-slate-600">
+                            <strong>Referencia de pago:</strong> {paymentId}
+                          </p>
+                        )}
                       </div>
                     )}
 

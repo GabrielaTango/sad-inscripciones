@@ -173,10 +173,11 @@ public class MercadoPagoService : IMercadoPagoService
             },
             PaymentMethods = new PreferencePaymentMethodsRequest
             {
-                // Pago Fácil no está permitido para la venta de productos.
+                // Pago Fácil y Rapipago no están permitidos para la venta de productos.
                 ExcludedPaymentMethods = new List<PreferencePaymentMethodRequest>
                 {
                     new PreferencePaymentMethodRequest { Id = "pagofacil" },
+                    new PreferencePaymentMethodRequest { Id = "rapipago" },
                 },
             },
             AutoReturn = "approved",
