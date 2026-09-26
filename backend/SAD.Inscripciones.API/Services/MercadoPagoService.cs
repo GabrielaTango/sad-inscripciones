@@ -171,6 +171,14 @@ public class MercadoPagoService : IMercadoPagoService
                 Failure = $"{frontendBaseUrl}/productos/pago/resultado?status=rejected",
                 Pending = $"{frontendBaseUrl}/productos/pago/resultado?status=pending",
             },
+            PaymentMethods = new PreferencePaymentMethodsRequest
+            {
+                // Pago Fácil no está permitido para la venta de productos.
+                ExcludedPaymentMethods = new List<PreferencePaymentMethodRequest>
+                {
+                    new PreferencePaymentMethodRequest { Id = "pagofacil" },
+                },
+            },
             AutoReturn = "approved",
             ExternalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef),
         };
