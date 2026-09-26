@@ -21,4 +21,18 @@ public class VentasProductoController : ControllerBase
         var resultado = await _service.CrearAsync(dto);
         return Ok(resultado);
     }
+
+    /// <summary>
+    /// Llamado por la página pública de resultado del pago: si la venta sigue
+    /// Pendiente, busca los pagos en MercadoPago por external_reference y confirma
+    /// los aprobados. Sirve como respaldo del webhook dedicado (por si la
+    /// notificación de MP no llegó a tiempo o el backend no tiene un host público
+    /// configurado para recibirla).
+    /// </summary>
+    [HttpPost("{publicRef}/verificar")]
+    public async Task<IActionResult> Verificar(string publicRef)
+    {
+        var resultado = await _service.VerificarAsync(publicRef);
+        return Ok(resultado);
+    }
 }

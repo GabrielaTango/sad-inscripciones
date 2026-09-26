@@ -457,3 +457,11 @@ export interface VentaProductoCreateResult {
   publicRef: string
   initPoint: string
 }
+
+export interface VentaProductoEstado {
+  estado: 'Pendiente' | 'Pagada' | 'Rechazada'
+  productoId: number
+  productoNombre: string
+  nombre: string
+  importe: number
+}

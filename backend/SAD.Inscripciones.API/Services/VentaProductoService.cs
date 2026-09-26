@@ -17,15 +17,18 @@ public class VentaProductoService : IVentaProductoService
     private readonly IProductoRepository _productoRepository;
     private readonly IVentaProductoRepository _repository;
     private readonly IMercadoPagoService _mercadoPagoService;
+    private readonly ILogger<VentaProductoService> _logger;
 
     public VentaProductoService(
         IProductoRepository productoRepository,
         IVentaProductoRepository repository,
-        IMercadoPagoService mercadoPagoService)
+        IMercadoPagoService mercadoPagoService,
+        ILogger<VentaProductoService> logger)
     {
         _productoRepository = productoRepository;
         _repository = repository;
         _mercadoPagoService = mercadoPagoService;
+        _logger = logger;
     }
 
     public async Task<VentaProductoCreateResultDto> CrearAsync(VentaProductoCreateDto dto)
@@ -75,6 +78,90 @@ public class VentaProductoService : IVentaProductoService
             VentaId = venta.Id,
             PublicRef = venta.PublicRef,
             InitPoint = preferencia.InitPoint,
+        };
+    }
+
+    public async Task ProcesarPagoAsync(MercadoPagoPaymentInfo paymentInfo)
+    {
+        if (!VentaExternalReference.TryParse(paymentInfo.ExternalReference, out var ventaId, out var publicRef))
+            return; // No es una referencia de venta de producto (p.ej. es de una inscripcion): se ignora.
+
+        var venta = await _repository.GetByIdAsync(ventaId);
+        if (venta is null)
+        {
+            _logger.LogWarning("Venta {VentaId} no encontrada para pago MP {PaymentId}", ventaId, paymentInfo.Id);
+            return;
+        }
+
+        if (venta.PublicRef != publicRef)
+        {
+            _logger.LogWarning(
+                "PublicRef no coincide para venta {VentaId}: esperado {Esperado}, recibido {Recibido} (pago MP {PaymentId})",
+                ventaId, venta.PublicRef, publicRef, paymentInfo.Id);
+            return;
+        }
+
+        // Decision de producto (ver odd/tasks/productos-venta.md): un pago no aprobado
+        // NO cambia el estado de la venta, solo se loguea. MP permite reintentar sobre la
+        // misma preferencia, y un reintento posterior aprobado debe poder confirmar la
+        // venta igual, así que nunca queda "cerrada" por un rechazo intermedio.
+        if (paymentInfo.Status != "approved")
+        {
+            _logger.LogInformation(
+                "Pago MP {PaymentId} para venta {VentaId} con status \"{Status}\": no se confirma, la venta queda Pendiente.",
+                paymentInfo.Id, ventaId, paymentInfo.Status);
+            return;
+        }
+
+        var resultado = await _repository.ConfirmarPagoAsync(ventaId, paymentInfo.Id, paymentInfo.TransactionAmount);
+
+        switch (resultado)
+        {
+            case ConfirmarPagoResult.Confirmed:
+                _logger.LogInformation("Venta {VentaId} confirmada por pago MP {PaymentId}", ventaId, paymentInfo.Id);
+                break;
+            case ConfirmarPagoResult.AmountMismatch:
+                _logger.LogWarning(
+                    "Monto no coincide para venta {VentaId}: importe={Importe}, acreditado={Acreditado} (pago MP {PaymentId})",
+                    ventaId, venta.Importe, paymentInfo.TransactionAmount, paymentInfo.Id);
+                break;
+            case ConfirmarPagoResult.AlreadyPaid:
+                _logger.LogInformation("Venta {VentaId} ya estaba confirmada (llamada idempotente)", ventaId);
+                break;
+            case ConfirmarPagoResult.NotFound:
+                _logger.LogWarning("Venta {VentaId} no encontrada al confirmar pago MP {PaymentId}", ventaId, paymentInfo.Id);
+                break;
+        }
+    }
+
+    public async Task<VentaProductoEstadoDto> VerificarAsync(string publicRef)
+    {
+        var venta = await _repository.GetByPublicRefAsync(publicRef);
+        if (venta is null)
+            throw new NotFoundException($"VentaProducto con PublicRef {publicRef} no encontrada.");
+
+        if (venta.Estado == "Pendiente")
+        {
+            var externalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef);
+            var pagos = await _mercadoPagoService.BuscarTodosPagosPorReferenciaAsync(externalReference);
+            foreach (var pago in pagos.Where(p => p.Status == "approved"))
+            {
+                await ProcesarPagoAsync(pago);
+            }
+
+            // Releer: ProcesarPagoAsync puede haber confirmado la venta.
+            venta = await _repository.GetByIdAsync(venta.Id) ?? venta;
+        }
+
+        var producto = await _productoRepository.GetByIdAsync(venta.ProductoId);
+
+        return new VentaProductoEstadoDto
+        {
+            Estado = venta.Estado,
+            ProductoId = venta.ProductoId,
+            ProductoNombre = producto?.Nombre ?? string.Empty,
+            Nombre = venta.Nombre,
+            Importe = venta.Importe,
         };
     }
 

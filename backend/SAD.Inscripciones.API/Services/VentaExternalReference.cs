@@ -13,15 +13,24 @@ public static class VentaExternalReference
 
     public static string Build(int ventaId, string publicRef) => $"{Prefix}{ventaId}-{publicRef}";
 
-    // Extrae el ventaId de un external_reference ("venta-12-abc123def...").
-    public static bool TryParseVentaId(string? externalReference, out int ventaId)
+    /// <summary>
+    /// Extrae ventaId y publicRef de un external_reference ("venta-12-abc123def...").
+    /// El llamador todavía debe comparar publicRef contra el de la venta cargada por
+    /// ventaId antes de confirmar el pago (ver <c>VentaProductoService.ProcesarPagoAsync</c>).
+    /// </summary>
+    public static bool TryParse(string? externalReference, out int ventaId, out string publicRef)
     {
         ventaId = 0;
+        publicRef = string.Empty;
         if (string.IsNullOrEmpty(externalReference) || !externalReference.StartsWith(Prefix))
             return false;
 
         var resto = externalReference[Prefix.Length..];
-        var idPart = resto.Split('-', 2)[0];
-        return int.TryParse(idPart, out ventaId);
+        var partes = resto.Split('-', 2);
+        if (partes.Length != 2 || string.IsNullOrEmpty(partes[1]))
+            return false;
+
+        publicRef = partes[1];
+        return int.TryParse(partes[0], out ventaId);
     }
 }

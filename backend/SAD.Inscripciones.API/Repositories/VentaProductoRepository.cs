@@ -78,8 +78,8 @@ public class VentaProductoRepository : IVentaProductoRepository
 
             if (venta.Estado != "Pendiente")
             {
-                // Already resolved (Pagada by a previous webhook call, or Rechazada):
-                // nothing to do, keep the webhook idempotent.
+                // Already Pagada by a previous call: nothing to do, keep the
+                // webhook / verification idempotent.
                 await transaction.RollbackAsync();
                 return ConfirmarPagoResult.AlreadyPaid;
             }
@@ -120,15 +120,6 @@ public class VentaProductoRepository : IVentaProductoRepository
             await transaction.RollbackAsync();
             throw;
         }
-    }
-
-    public async Task<bool> MarcarRechazadaAsync(int ventaId)
-    {
-        using var connection = _dbFactory.CreateConnection();
-        const string sql = @"
-            UPDATE VentasProducto SET Estado = 'Rechazada', UpdatedAt = UTC_TIMESTAMP()
-            WHERE Id = @Id AND Estado = 'Pendiente'";
-        return await connection.ExecuteAsync(sql, new { Id = ventaId }) > 0;
     }
 
     public async Task<bool> MarcarMailEnviadoAsync(int ventaId)

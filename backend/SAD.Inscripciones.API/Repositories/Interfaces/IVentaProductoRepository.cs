@@ -8,9 +8,9 @@ public enum ConfirmarPagoResult
     NotFound,
 
     /// <summary>
-    /// The sale was not (or no longer) Pendiente: either already confirmed by a
-    /// previous webhook call (idempotent replay), or already Rechazada. No
-    /// state change is made.
+    /// The sale was not (or no longer) Pendiente: already confirmed by a
+    /// previous call (idempotent replay of the webhook or the result-page
+    /// verification). No state change is made.
     /// </summary>
     AlreadyPaid,
 
@@ -34,9 +34,6 @@ public interface IVentaProductoRepository
     /// FechaPago. Safe to call multiple times with the same webhook payload.
     /// </summary>
     Task<ConfirmarPagoResult> ConfirmarPagoAsync(int ventaId, long mpPaymentId, decimal montoAcreditado);
-
-    /// <summary>Marks the sale as Rechazada, only if it is still Pendiente.</summary>
-    Task<bool> MarcarRechazadaAsync(int ventaId);
 
     Task<bool> MarcarMailEnviadoAsync(int ventaId);
 }
