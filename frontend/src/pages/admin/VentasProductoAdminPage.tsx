@@ -13,7 +13,6 @@ const VentasProductoAdminPage = () => {
   const [productos, setProductos] = useState<Producto[]>([])
   const [data, setData] = useState<VentaProductoAdmin[]>([])
   const [productoFilter, setProductoFilter] = useState<number | ''>(productoIdInicial ? Number(productoIdInicial) : '')
-  const [estadoFilter, setEstadoFilter] = useState<string>('Pagada')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [texto, setTexto] = useState('')
@@ -25,11 +24,12 @@ const VentasProductoAdminPage = () => {
 
   const filtros = useMemo(() => ({
     productoId: productoFilter ? Number(productoFilter) : undefined,
-    estado: estadoFilter === 'Todas' ? undefined : estadoFilter,
+    // Solo las ventas pagadas cuentan como venta; las pendientes son checkouts abandonados.
+    estado: 'Pagada',
     desde: desde || undefined,
     hasta: hasta || undefined,
     texto: texto || undefined,
-  }), [productoFilter, estadoFilter, desde, hasta, texto])
+  }), [productoFilter, desde, hasta, texto])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,7 +48,7 @@ const VentasProductoAdminPage = () => {
     const timer = setTimeout(load, texto ? 400 : 0)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productoFilter, estadoFilter, desde, hasta, texto])
+  }, [productoFilter, desde, hasta, texto])
 
   const handleExport = async () => {
     if (data.length === 0 || exporting) return
@@ -69,11 +69,6 @@ const VentasProductoAdminPage = () => {
   const camposExtraColumnas = productoFilter ? (productoSeleccionado?.camposExtra ?? []) : []
 
   const totalImporte = data.reduce((acc, v) => acc + v.importe, 0)
-
-  const estadoBadge = (estado: string) => {
-    const map: Record<string, string> = { Pendiente: 'bg-amber-100 text-amber-700', Pagada: 'bg-green-100 text-green-700', Rechazada: 'bg-red-100 text-red-700' }
-    return map[estado] || 'bg-blue-100 text-blue-700'
-  }
 
   const baseColumns = [
     { key: 'fechaPago', label: 'Fecha pago', render: (v: VentaProductoAdmin) => v.fechaPago ? new Date(v.fechaPago).toLocaleString('es-AR') : '-' },
@@ -100,7 +95,6 @@ const VentasProductoAdminPage = () => {
   const tailColumns = [
     { key: 'importe', label: 'Importe', render: (v: VentaProductoAdmin) => `$${v.importe.toFixed(2)}` },
     { key: 'mpPaymentId', label: 'Nro pago MP', render: (v: VentaProductoAdmin) => v.mpPaymentId ?? '-' },
-    { key: 'estado', label: 'Estado', render: (v: VentaProductoAdmin) => <span className={`badge ${estadoBadge(v.estado)}`}>{v.estado}</span> },
     { key: 'mailEnviado', label: 'Mail', render: (v: VentaProductoAdmin) => v.mailEnviado ? <span className="badge bg-green-100 text-green-700">Si</span> : <span className="badge bg-gray-100 text-gray-700">No</span> },
   ]
 
@@ -115,11 +109,6 @@ const VentasProductoAdminPage = () => {
         <select className="form-select w-auto" value={productoFilter} onChange={e => setProductoFilter(e.target.value ? Number(e.target.value) : '')}>
           <option value="">Todos los productos</option>
           {productos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
-        <select className="form-select w-auto" value={estadoFilter} onChange={e => setEstadoFilter(e.target.value)}>
-          <option value="Pagada">Pagada</option>
-          <option value="Pendiente">Pendiente</option>
-          <option value="Todas">Todas</option>
         </select>
         <label className="text-sm text-slate-600 flex items-center gap-1">
           Desde

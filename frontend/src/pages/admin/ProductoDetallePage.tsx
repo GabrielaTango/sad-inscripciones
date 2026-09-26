@@ -22,6 +22,8 @@ const ProductoDetallePage = () => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  // Texto crudo de las opciones mientras se edita, para no perder comas o espacios finales al tipear.
+  const [opcionesDraft, setOpcionesDraft] = useState<Record<number, string>>({})
 
   const formDirty = isNew || JSON.stringify(form) !== JSON.stringify(formOriginal)
 
@@ -179,8 +181,13 @@ const ProductoDetallePage = () => {
                       <input
                         type="text"
                         className="form-input"
-                        value={campo.options.join(', ')}
-                        onChange={e => updateCampoExtra(index, { options: e.target.value.split(',').map(o => o.trim()).filter(o => o.length > 0) })}
+                        value={opcionesDraft[index] ?? campo.options.join(', ')}
+                        onChange={e => {
+                          const raw = e.target.value
+                          setOpcionesDraft(d => ({ ...d, [index]: raw }))
+                          updateCampoExtra(index, { options: raw.split(',').map(o => o.trim()).filter(o => o.length > 0) })
+                        }}
+                        onBlur={() => setOpcionesDraft(d => { const rest = { ...d }; delete rest[index]; return rest })}
                         placeholder="S, M, L, XL"
                       />
                     </div>
