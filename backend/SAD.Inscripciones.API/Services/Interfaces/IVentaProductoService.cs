@@ -28,4 +28,18 @@ public interface IVentaProductoService
     /// <see cref="ProcesarPagoAsync"/>; luego devuelve el estado actual de la venta.
     /// </summary>
     Task<VentaProductoEstadoDto> VerificarAsync(string publicRef);
+
+    /// <summary>
+    /// Listado admin de ventas con filtros (producto, estado, rango de FechaPago,
+    /// texto libre); ProductoNombre viene del JOIN del repositorio y DatosExtra se
+    /// deserializa desde el JSON crudo.
+    /// </summary>
+    Task<IEnumerable<VentaProductoAdminDto>> ListAdminAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto);
+
+    /// <summary>
+    /// Exporta el mismo listado a Excel. Cuando hay filtro de producto, una columna
+    /// por cada CamposExtra del producto (en su orden); si no, la union de claves
+    /// presentes en los resultados.
+    /// </summary>
+    Task<byte[]> ExportToExcelAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto);
 }

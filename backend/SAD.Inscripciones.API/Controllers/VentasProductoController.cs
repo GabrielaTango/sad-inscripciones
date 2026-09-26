@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SAD.Inscripciones.API.DTOs;
 using SAD.Inscripciones.API.Services.Interfaces;
@@ -20,6 +21,43 @@ public class VentasProductoController : ControllerBase
     {
         var resultado = await _service.CrearAsync(dto);
         return Ok(resultado);
+    }
+
+    /// <summary>
+    /// Listado admin de ventas. "estado" default "Pagada" cuando no se envia;
+    /// "Todas" (sin distinguir mayusculas) anula el filtro de estado.
+    /// </summary>
+    [HttpGet]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int? productoId,
+        [FromQuery] string? estado,
+        [FromQuery] DateTime? desde,
+        [FromQuery] DateTime? hasta,
+        [FromQuery] string? texto)
+    {
+        return Ok(await _service.ListAdminAsync(productoId, ResolverEstado(estado), desde, hasta, texto));
+    }
+
+    [HttpGet("export")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> Export(
+        [FromQuery] int? productoId,
+        [FromQuery] string? estado,
+        [FromQuery] DateTime? desde,
+        [FromQuery] DateTime? hasta,
+        [FromQuery] string? texto)
+    {
+        var bytes = await _service.ExportToExcelAsync(productoId, ResolverEstado(estado), desde, hasta, texto);
+        var nombre = $"ventas-producto_{DateTime.Now:yyyy-MM-dd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
+    }
+
+    private static string? ResolverEstado(string? estado)
+    {
+        if (string.IsNullOrWhiteSpace(estado))
+            return "Pagada";
+        return string.Equals(estado, "Todas", StringComparison.OrdinalIgnoreCase) ? null : estado;
     }
 
     /// <summary>

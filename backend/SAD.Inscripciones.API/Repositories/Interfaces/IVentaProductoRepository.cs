@@ -26,7 +26,13 @@ public interface IVentaProductoRepository
     Task<int> CreatePendienteAsync(VentaProducto entity);
     Task<VentaProducto?> GetByIdAsync(int id);
     Task<VentaProducto?> GetByPublicRefAsync(string publicRef);
-    Task<IEnumerable<VentaProducto>> ListAsync(int? productoId, string? estado);
+
+    /// <summary>
+    /// Listado admin con JOIN a Productos (ProductoNombre) y filtros opcionales:
+    /// producto, estado exacto, rango de FechaPago (desde/hasta, ambos inclusive
+    /// por dia) y texto libre sobre Dni/Nombre/Apellido/Email.
+    /// </summary>
+    Task<IEnumerable<VentaProductoAdminRow>> ListAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto);
 
     /// <summary>
     /// Idempotently confirms payment for a sale under a row lock (SELECT ... FOR

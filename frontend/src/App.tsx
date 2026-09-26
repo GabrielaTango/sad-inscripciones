@@ -39,6 +39,7 @@ import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
 import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 import ProductosAdminPage from './pages/admin/ProductosAdminPage'
 import ProductoDetallePage from './pages/admin/ProductoDetallePage'
+import VentasProductoAdminPage from './pages/admin/VentasProductoAdminPage'
 import ComprarProductoPage from './pages/ComprarProductoPage'
 import ProductoPagoResultadoPage from './pages/ProductoPagoResultadoPage'
 
@@ -92,6 +93,7 @@ function App() {
               <Route path="email-templates/:codigo" element={<EmailTemplateEditorPage />} />
               <Route path="productos" element={<ProductosAdminPage />} />
               <Route path="productos/nuevo" element={<ProductoDetallePage />} />
+              <Route path="productos/ventas" element={<VentasProductoAdminPage />} />
               <Route path="productos/:id" element={<ProductoDetallePage />} />
             </Route>
           </Routes>

@@ -465,3 +465,28 @@ export interface VentaProductoEstado {
   nombre: string
   importe: number
 }
+
+export interface VentaProductoAdmin {
+  id: number
+  productoId: number
+  productoNombre: string
+  dni: string
+  nombre: string
+  apellido: string
+  email: string
+  datosExtra: Record<string, string>
+  importe: number
+  estado: 'Pendiente' | 'Pagada' | 'Rechazada'
+  mpPaymentId?: number | null
+  fechaAlta: string
+  fechaPago?: string | null
+  mailEnviado: boolean
+}
+
+export interface VentaProductoAdminFiltros {
+  productoId?: number
+  estado?: string
+  desde?: string
+  hasta?: string
+  texto?: string
+}

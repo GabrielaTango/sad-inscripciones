@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ClosedXML.Excel;
 using SAD.Inscripciones.API.DTOs;
 using SAD.Inscripciones.API.Exceptions;
 using SAD.Inscripciones.API.Models;
@@ -234,5 +235,108 @@ public class VentaProductoService : IVentaProductoService
             return new List<CampoExtraProducto>();
 
         return JsonSerializer.Deserialize<List<CampoExtraProducto>>(json) ?? new List<CampoExtraProducto>();
+    }
+
+    public async Task<IEnumerable<VentaProductoAdminDto>> ListAdminAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto)
+    {
+        var filas = await _repository.ListAsync(productoId, estado, desde, hasta, texto);
+        return filas.Select(MapAdminDto);
+    }
+
+    private static VentaProductoAdminDto MapAdminDto(VentaProductoAdminRow fila) => new()
+    {
+        Id = fila.Id,
+        ProductoId = fila.ProductoId,
+        ProductoNombre = fila.ProductoNombre,
+        Dni = fila.Dni,
+        Nombre = fila.Nombre,
+        Apellido = fila.Apellido,
+        Email = fila.Email,
+        DatosExtra = DeserializeDatosExtra(fila.DatosExtra),
+        Importe = fila.Importe,
+        Estado = fila.Estado,
+        MpPaymentId = fila.MpPaymentId,
+        FechaAlta = fila.FechaAlta,
+        FechaPago = fila.FechaPago,
+        MailEnviado = fila.MailEnviado,
+    };
+
+    private static Dictionary<string, string> DeserializeDatosExtra(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new Dictionary<string, string>();
+
+        return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new Dictionary<string, string>();
+    }
+
+    public async Task<byte[]> ExportToExcelAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto)
+    {
+        var ventas = (await ListAdminAsync(productoId, estado, desde, hasta, texto)).ToList();
+
+        // Columnas de campos extra: las del producto filtrado (en su orden declarado), o
+        // la union de claves presentes en los resultados cuando no hay filtro de producto.
+        var columnasExtra = new List<(string Key, string Label)>();
+        if (productoId.HasValue)
+        {
+            var producto = await _productoRepository.GetByIdAsync(productoId.Value);
+            if (producto != null)
+                columnasExtra.AddRange(DeserializeCamposExtra(producto.CamposExtra).Select(c => (c.Key, c.Label)));
+        }
+        else
+        {
+            var vistos = new HashSet<string>();
+            foreach (var venta in ventas)
+            {
+                foreach (var key in venta.DatosExtra.Keys)
+                {
+                    if (vistos.Add(key))
+                        columnasExtra.Add((key, key));
+                }
+            }
+        }
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Ventas");
+
+        var headers = new List<string> { "Fecha pago", "Producto", "DNI", "Apellido", "Nombre", "Email" };
+        headers.AddRange(columnasExtra.Select(c => c.Label));
+        headers.Add("Importe");
+        headers.Add("Nro pago MP");
+        headers.Add("Mail enviado");
+
+        for (int c = 0; c < headers.Count; c++)
+            ws.Cell(1, c + 1).Value = headers[c];
+
+        var headerRange = ws.Range(1, 1, 1, headers.Count);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Font.FontColor = XLColor.White;
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(0x5D, 0x8A, 0xC8);
+
+        for (int i = 0; i < ventas.Count; i++)
+        {
+            var venta = ventas[i];
+            int row = i + 2;
+            int col = 1;
+
+            ws.Cell(row, col++).Value = venta.FechaPago?.ToString("dd/MM/yyyy HH:mm") ?? "";
+            ws.Cell(row, col++).Value = venta.ProductoNombre;
+            ws.Cell(row, col++).Value = venta.Dni;
+            ws.Cell(row, col++).Value = venta.Apellido;
+            ws.Cell(row, col++).Value = venta.Nombre;
+            ws.Cell(row, col++).Value = venta.Email;
+
+            foreach (var columna in columnasExtra)
+                ws.Cell(row, col++).Value = venta.DatosExtra.TryGetValue(columna.Key, out var valor) ? valor : "";
+
+            ws.Cell(row, col++).Value = venta.Importe;
+            ws.Cell(row, col++).Value = venta.MpPaymentId?.ToString() ?? "";
+            ws.Cell(row, col++).Value = venta.MailEnviado ? "Si" : "No";
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return ms.ToArray();
     }
 }

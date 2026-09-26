@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Receipt, Link as LinkIcon } from 'lucide-react'
 import DataTable from '../../components/Admin/DataTable'
 import ConfirmDialog from '../../components/Admin/ConfirmDialog'
 import { productosService } from '../../services/productosService'
@@ -13,6 +13,7 @@ const ProductosAdminPage = () => {
   const [showConfirm, setShowConfirm] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [copiedId, setCopiedId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setData(await productosService.getAllAdmin())
@@ -22,6 +23,18 @@ const ProductosAdminPage = () => {
 
   const openEdit = (item: Producto) => { navigate(`/admin/productos/${item.id}`) }
   const openDelete = (item: Producto) => { setDeleteId(item.id); setShowConfirm(true) }
+  const verVentas = (item: Producto) => { navigate(`/admin/productos/ventas?productoId=${item.id}`) }
+
+  const copiarLinkCompra = async (item: Producto) => {
+    const link = `${window.location.origin}/productos/${item.id}/comprar`
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopiedId(item.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      setError('No se pudo copiar el link al portapapeles')
+    }
+  }
 
   const handleDelete = async () => {
     if (!deleteId) return
@@ -53,6 +66,20 @@ const ProductosAdminPage = () => {
         columns={columns as never}
         onEdit={openEdit as never}
         onDelete={openDelete as never}
+        actions={(item: unknown) => {
+          const producto = item as Producto
+          return (
+            <>
+              <button className="btn-outline-secondary btn-sm p-1.5" onClick={() => verVentas(producto)} title="Ver ventas de este producto">
+                <Receipt className="w-3.5 h-3.5" />
+              </button>
+              <button className="btn-outline-primary btn-sm p-1.5" onClick={() => copiarLinkCompra(producto)} title="Copiar link de compra">
+                <LinkIcon className="w-3.5 h-3.5" />
+              </button>
+              {copiedId === producto.id && <span className="text-xs text-green-600">Copiado!</span>}
+            </>
+          )
+        }}
       />
 
       <ConfirmDialog show={showConfirm} title="Eliminar Producto" message="Esta seguro que desea eliminar este producto?" onConfirm={handleDelete} onCancel={() => setShowConfirm(false)} loading={loading} />

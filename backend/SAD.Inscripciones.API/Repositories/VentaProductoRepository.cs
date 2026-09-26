@@ -41,21 +41,47 @@ public class VentaProductoRepository : IVentaProductoRepository
             "SELECT * FROM VentasProducto WHERE PublicRef = @PublicRef", new { PublicRef = publicRef });
     }
 
-    public async Task<IEnumerable<VentaProducto>> ListAsync(int? productoId, string? estado)
+    public async Task<IEnumerable<VentaProductoAdminRow>> ListAsync(int? productoId, string? estado, DateTime? desde, DateTime? hasta, string? texto)
     {
         using var connection = _dbFactory.CreateConnection();
-        var sql = @"SELECT * FROM VentasProducto WHERE 1 = 1";
+        var sql = @"
+            SELECT v.Id, v.ProductoId, p.Nombre AS ProductoNombre, v.Dni, v.Nombre, v.Apellido, v.Email,
+                   v.DatosExtra, v.Importe, v.Estado, v.MpPaymentId, v.FechaAlta, v.FechaPago, v.MailEnviado
+            FROM VentasProducto v
+            JOIN Productos p ON p.Id = v.ProductoId
+            WHERE 1 = 1";
+
         if (productoId.HasValue)
         {
-            sql += " AND ProductoId = @ProductoId";
+            sql += " AND v.ProductoId = @ProductoId";
         }
         if (!string.IsNullOrWhiteSpace(estado))
         {
-            sql += " AND Estado = @Estado";
+            sql += " AND v.Estado = @Estado";
         }
-        sql += " ORDER BY Id DESC";
+        if (desde.HasValue)
+        {
+            sql += " AND v.FechaPago >= @Desde";
+        }
+        if (hasta.HasValue)
+        {
+            // Limite exclusivo del dia siguiente para que "hasta" incluya el dia completo.
+            sql += " AND v.FechaPago < @HastaExclusiva";
+        }
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            sql += " AND (v.Dni LIKE @Texto OR v.Nombre LIKE @Texto OR v.Apellido LIKE @Texto OR v.Email LIKE @Texto)";
+        }
+        sql += " ORDER BY v.Id DESC";
 
-        return await connection.QueryAsync<VentaProducto>(sql, new { ProductoId = productoId, Estado = estado });
+        return await connection.QueryAsync<VentaProductoAdminRow>(sql, new
+        {
+            ProductoId = productoId,
+            Estado = estado,
+            Desde = desde,
+            HastaExclusiva = hasta?.Date.AddDays(1),
+            Texto = $"%{texto}%",
+        });
     }
 
     public async Task<ConfirmarPagoResult> ConfirmarPagoAsync(int ventaId, long mpPaymentId, decimal montoAcreditado)
