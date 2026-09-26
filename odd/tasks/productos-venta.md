@@ -35,11 +35,11 @@ SAD needs to sell merchandise. Buyers provide DNI, first name, last name, email 
 - RDD: off (global) -> ordinary checks only.
 
 ## Delivery
-- Branch: `feat/productos-venta`. Strategy: ask-on-risk. Forecast likely > 400 authored lines -> chain strategy to be asked before exceeding.
+- Branch: `feat/productos-venta`. Strategy: `single-pr` (user decision: solo developer, no reviewer). Forecast ~2000-2500 authored lines; one work-unit commit per task keeps it reviewable commit by commit.
 
 ## Tasks
 - [x] T1 SQL migration `Migration_ProductosVenta.sql`, models, repositories (Productos, VentasProducto) + DI registration.
-- [ ] T2 Products CRUD: service, DTOs, `ProductosController` (public GET active, Admin POST/PUT/DELETE); admin pages list + form with dynamic-field and email editor; sidebar entry.
+- [x] T2 Products CRUD: service, DTOs, `ProductosController` (public GET active, Admin POST/PUT/DELETE); admin pages list + form with dynamic-field and email editor; sidebar entry.
 - [ ] T3 Pending sale + MP preference (`CrearPreferenciaVentaAsync`) + `POST /api/ventas-producto`; public purchase page `/productos/:id/comprar` rendering dynamic fields.
 - [ ] T4 `VentaProductoWebhookController` with idempotent confirmation (row lock, amount check, UNIQUE MpPaymentId) + public result page `/productos/pago/resultado`.
 - [ ] T5 Confirmation email `EnviarConfirmacionVentaAsync` triggered only on the Pendiente -> Pagada transition.
@@ -47,7 +47,10 @@ SAD needs to sell merchandise. Buyers provide DNI, first name, last name, email 
 
 ## Progress
 - Branch created from `main`.
-- T1 done: `SQL/Migration_ProductosVenta.sql`, `Models/{Producto,VentaProducto,CampoExtraProducto}.cs`, `Repositories/{ProductoRepository,VentaProductoRepository}.cs` + interfaces, DI registered in `Program.cs`. `dotnet build` succeeds (0 errors). Commit: TBD.
+- T1 done: `SQL/Migration_ProductosVenta.sql`, `Models/{Producto,VentaProducto,CampoExtraProducto}.cs`, `Repositories/{ProductoRepository,VentaProductoRepository}.cs` + interfaces, DI registered in `Program.cs`. `dotnet build` succeeds (0 errors, re-run by parent). Commit: `ed46203` (~475 lines incl. this doc).
+- Decision (user-approved): a rejected MercadoPago payment does NOT change the sale state; it is only logged and the sale stays `Pendiente`. Reason: MP lets the buyer retry on the same preference, producing a later approved payment with the same external_reference that must still confirm the sale. T4: webhook must not call `MarcarRechazadaAsync` (remove it from the repository if unused).
+
+- T2 done: `DTOs/{ProductoCreateDto,ProductoUpdateDto,ProductoDto}.cs` (ProductoDto full + ProductoPublicoDto without mail fields), `Services/{Interfaces/IProductoService,ProductoService}.cs` (CamposExtra JSON serialize/deserialize, key normalization + reserved-key/type/select-options validation), `Controllers/ProductosController.cs` (`api/productos` GET/`{id}` public active-only, `admin`/`admin/{id}` full DTO, POST/PUT/DELETE Admin), DI registered in `Program.cs`. Frontend: `types/models.ts` (Producto/CampoExtraProducto/ProductoPublico/ProductoForm), `services/productosService.ts`, `pages/admin/{ProductosAdminPage,ProductoDetallePage}.tsx` (list + full-page form with extra-field editor and email variables help box), routes + "Productos" sidebar entry (Package icon) in `App.tsx`/`AdminLayout.tsx`. `dotnet build`: 0 errors. `npm run build`: OK. `npm run lint`: 0 errors in touched files (6 pre-existing errors elsewhere, unrelated). Commit: TBD (by parent).
 
 ## Next step
-T2.
+T3.

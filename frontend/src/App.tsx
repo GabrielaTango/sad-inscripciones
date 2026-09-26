@@ -37,6 +37,8 @@ import ConfiguracionMercadoPagoPage from './pages/admin/ConfiguracionMercadoPago
 import ConfiguracionPayPalPage from './pages/admin/ConfiguracionPayPalPage'
 import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
 import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
+import ProductosAdminPage from './pages/admin/ProductosAdminPage'
+import ProductoDetallePage from './pages/admin/ProductoDetallePage'
 
 function App() {
   return (
@@ -84,6 +86,9 @@ function App() {
               <Route path="configuracion-paypal" element={<ConfiguracionPayPalPage />} />
               <Route path="email-templates" element={<EmailTemplatesListPage />} />
               <Route path="email-templates/:codigo" element={<EmailTemplateEditorPage />} />
+              <Route path="productos" element={<ProductosAdminPage />} />
+              <Route path="productos/nuevo" element={<ProductoDetallePage />} />
+              <Route path="productos/:id" element={<ProductoDetallePage />} />
             </Route>
           </Routes>
         </main>

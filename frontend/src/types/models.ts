@@ -401,3 +401,44 @@ export interface EmailTemplateForm {
   bodyJson?: string | null
   activo: boolean
 }
+
+export interface CampoExtraProducto {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'select'
+  options: string[]
+  required: boolean
+}
+
+export interface Producto {
+  id: number
+  nombre: string
+  descripcion?: string
+  precio: number
+  activo: boolean
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+  mailAsunto?: string
+  mailCuerpoHtml?: string
+  fechaAlta: string
+}
+
+export interface ProductoPublico {
+  id: number
+  nombre: string
+  descripcion?: string
+  precio: number
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+}
+
+export interface ProductoForm {
+  nombre: string
+  descripcion?: string
+  precio: number
+  activo: boolean
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+  mailAsunto?: string
+  mailCuerpoHtml?: string
+}
