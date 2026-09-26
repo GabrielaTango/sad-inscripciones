@@ -62,3 +62,9 @@ SAD needs to sell merchandise. Buyers provide DNI, first name, last name, email 
 
 ## Next step
 Feature complete (T1-T6). Manual end-to-end test in MercadoPago sandbox + apply `SQL/Migration_ProductosVenta.sql`.
+
+## Post-implementation fixes (from manual testing)
+- `92aa509` select options input keeps raw text (commas typable); admin sales list shows only `Pagada` (estado filter/column removed).
+- `dc178a4`, `4998ef0` Pago Fácil and Rapipago excluded from product checkout; return page shows "Compra realizada" confirmation with buyer, amount and MP payment reference.
+- Decision: no "resend email" action (user declined). Mail is sent once on Pendiente -> Pagada; if SMTP is inactive/failing at that moment, it is not retried.
+- Pending (user decision, not applied): `docker-compose.yml` has `MercadoPago__BackendPublicUrl` pointing at the ngrok host; production should use `https://www.diabetes2.org.ar`. `docker-compose.ngrok.yml` lacks the key.
