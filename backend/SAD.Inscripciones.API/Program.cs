@@ -34,6 +34,8 @@ builder.Services.AddScoped<IConfiguracionContactoRepository, ConfiguracionContac
 builder.Services.AddScoped<IConfiguracionMercadoPagoRepository, ConfiguracionMercadoPagoRepository>();
 builder.Services.AddScoped<IConfiguracionPayPalRepository, ConfiguracionPayPalRepository>();
 builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
+builder.Services.AddScoped<IProductoRepository, ProductoRepository>();
+builder.Services.AddScoped<IVentaProductoRepository, VentaProductoRepository>();
 
 // Services
 builder.Services.AddScoped<ITipoEventoService, TipoEventoService>();
