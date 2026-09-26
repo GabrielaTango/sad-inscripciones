@@ -17,17 +17,20 @@ public class VentaProductoService : IVentaProductoService
     private readonly IProductoRepository _productoRepository;
     private readonly IVentaProductoRepository _repository;
     private readonly IMercadoPagoService _mercadoPagoService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<VentaProductoService> _logger;
 
     public VentaProductoService(
         IProductoRepository productoRepository,
         IVentaProductoRepository repository,
         IMercadoPagoService mercadoPagoService,
+        IEmailService emailService,
         ILogger<VentaProductoService> logger)
     {
         _productoRepository = productoRepository;
         _repository = repository;
         _mercadoPagoService = mercadoPagoService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -119,6 +122,7 @@ public class VentaProductoService : IVentaProductoService
         {
             case ConfirmarPagoResult.Confirmed:
                 _logger.LogInformation("Venta {VentaId} confirmada por pago MP {PaymentId}", ventaId, paymentInfo.Id);
+                await EnviarMailConfirmacionAsync(venta);
                 break;
             case ConfirmarPagoResult.AmountMismatch:
                 _logger.LogWarning(
@@ -132,6 +136,26 @@ public class VentaProductoService : IVentaProductoService
                 _logger.LogWarning("Venta {VentaId} no encontrada al confirmar pago MP {PaymentId}", ventaId, paymentInfo.Id);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Dispara el mail de confirmación solo cuando ConfirmarPagoAsync transicionó
+    /// Pendiente -&gt; Pagada (nunca en un replay idempotente). Si el envío tuvo éxito,
+    /// marca MailEnviado para que quede registro; EnviarConfirmacionVentaAsync ya
+    /// loguea y no tira si falla, así que un error de mail nunca revierte la confirmación.
+    /// </summary>
+    private async Task EnviarMailConfirmacionAsync(VentaProducto venta)
+    {
+        var producto = await _productoRepository.GetByIdAsync(venta.ProductoId);
+        if (producto is null)
+        {
+            _logger.LogWarning("Producto {ProductoId} no encontrado; no se envía mail para venta {VentaId}", venta.ProductoId, venta.Id);
+            return;
+        }
+
+        var enviado = await _emailService.EnviarConfirmacionVentaAsync(venta, producto);
+        if (enviado)
+            await _repository.MarcarMailEnviadoAsync(venta.Id);
     }
 
     public async Task<VentaProductoEstadoDto> VerificarAsync(string publicRef)

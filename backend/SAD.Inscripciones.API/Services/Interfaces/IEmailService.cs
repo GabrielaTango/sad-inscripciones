@@ -18,6 +18,17 @@ public interface IEmailService
     Task EnviarReservaPagadaAsync(Inscripcion inscripcion);
 
     /// <summary>
+    /// Envía el mail de confirmación de una venta de producto, usando el asunto y
+    /// cuerpo configurados en el propio Producto (MailAsunto/MailCuerpoHtml, no
+    /// EmailTemplates) con reemplazo de {{Nombre}}, {{Apellido}}, {{Dni}}, {{Email}},
+    /// {{Producto}}, {{Importe}} y una entrada por cada clave de DatosExtra. Si el
+    /// email está deshabilitado o el producto no tiene asunto/cuerpo configurados, no
+    /// envía nada. No tira excepción si falla: loguea y devuelve false. Devuelve true
+    /// solo si el mail se envió efectivamente.
+    /// </summary>
+    Task<bool> EnviarConfirmacionVentaAsync(VentaProducto venta, Producto producto);
+
+    /// <summary>
     /// Envía un mail de prueba con la config actual al destinatario indicado.
     /// SÍ propaga errores (lo usa el panel admin para diagnóstico).
     /// </summary>
