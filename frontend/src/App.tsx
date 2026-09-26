@@ -39,6 +39,7 @@ import EmailTemplatesListPage from './pages/admin/EmailTemplatesListPage'
 import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 import ProductosAdminPage from './pages/admin/ProductosAdminPage'
 import ProductoDetallePage from './pages/admin/ProductoDetallePage'
+import ComprarProductoPage from './pages/ComprarProductoPage'
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
             <Route path="/nosotros" element={<NosotrosPage />} />
             <Route path="/eventos" element={<EventosPage />} />
             <Route path="/inscripcion/:eventoId" element={<InscripcionPage />} />
+            <Route path="/productos/:id/comprar" element={<ComprarProductoPage />} />
             <Route path="/contacto" element={<ContactoPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/mis-inscripciones" element={<MisInscripcionesPage />} />

@@ -15,6 +15,7 @@ public class MercadoPagoService : IMercadoPagoService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ICryptoService _crypto;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<MercadoPagoService> _logger;
     private readonly string _fallbackFrontendBaseUrl;
 
@@ -31,6 +32,7 @@ public class MercadoPagoService : IMercadoPagoService
     {
         _scopeFactory = scopeFactory;
         _crypto = crypto;
+        _configuration = configuration;
         _logger = logger;
         // Solo se usa si la DB no tiene FrontendBaseUrl seteado.
         _fallbackFrontendBaseUrl = configuration["MercadoPago:FrontendBaseUrl"] ?? "http://localhost:5173";
@@ -142,6 +144,58 @@ public class MercadoPagoService : IMercadoPagoService
         {
             PreferenceId = preference.Id!,
             InitPoint = initPoint!,
+        };
+    }
+
+    public async Task<MercadoPagoPreferenceResult> CrearPreferenciaVentaAsync(VentaProducto venta, string productoNombre)
+    {
+        var frontendBaseUrl = await EnsureConfiguradoAsync();
+        var client = new PreferenceClient();
+
+        var request = new PreferenceRequest
+        {
+            Items = new List<PreferenceItemRequest>
+            {
+                new PreferenceItemRequest
+                {
+                    Title = productoNombre,
+                    Description = $"{venta.Nombre} {venta.Apellido}",
+                    Quantity = 1,
+                    CurrencyId = "ARS",
+                    UnitPrice = venta.Importe,
+                }
+            },
+            BackUrls = new PreferenceBackUrlsRequest
+            {
+                Success = $"{frontendBaseUrl}/productos/pago/resultado?status=approved",
+                Failure = $"{frontendBaseUrl}/productos/pago/resultado?status=rejected",
+                Pending = $"{frontendBaseUrl}/productos/pago/resultado?status=pending",
+            },
+            AutoReturn = "approved",
+            ExternalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef),
+        };
+
+        // Solo se manda si está configurado (host público del backend, ej. vía ngrok):
+        // sin esto, MP no puede notificar y la confirmación queda a cargo de la
+        // verificación que hace la página de resultado (T4).
+        var backendPublicUrl = _configuration["MercadoPago:BackendPublicUrl"];
+        if (!string.IsNullOrWhiteSpace(backendPublicUrl))
+        {
+            request.NotificationUrl = $"{backendPublicUrl.TrimEnd('/')}/api/webhooks/mercadopago/ventas";
+        }
+
+        _logger.LogInformation("Creando preferencia MP para venta de producto {Id}, monto {Monto} ARS",
+            venta.Id, venta.Importe);
+
+        Preference preference = await client.CreateAsync(request);
+
+        _logger.LogInformation("Preferencia MP (venta) creada: Id={Id}, InitPoint={InitPoint}",
+            preference.Id, preference.InitPoint);
+
+        return new MercadoPagoPreferenceResult
+        {
+            PreferenceId = preference.Id!,
+            InitPoint = preference.InitPoint!,
         };
     }
 

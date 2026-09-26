@@ -442,3 +442,18 @@ export interface ProductoForm {
   mailAsunto?: string
   mailCuerpoHtml?: string
 }
+
+export interface VentaProductoCreateForm {
+  productoId: number
+  dni: string
+  nombre: string
+  apellido: string
+  email: string
+  datosExtra: Record<string, string>
+}
+
+export interface VentaProductoCreateResult {
+  ventaId: number
+  publicRef: string
+  initPoint: string
+}
