@@ -34,6 +34,8 @@ builder.Services.AddScoped<IConfiguracionContactoRepository, ConfiguracionContac
 builder.Services.AddScoped<IConfiguracionMercadoPagoRepository, ConfiguracionMercadoPagoRepository>();
 builder.Services.AddScoped<IConfiguracionPayPalRepository, ConfiguracionPayPalRepository>();
 builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
+builder.Services.AddScoped<IProductoRepository, ProductoRepository>();
+builder.Services.AddScoped<IVentaProductoRepository, VentaProductoRepository>();
 
 // Services
 builder.Services.AddScoped<ITipoEventoService, TipoEventoService>();
@@ -55,6 +57,8 @@ builder.Services.AddScoped<IInscripcionPagoValidationService, InscripcionPagoVal
 builder.Services.AddSingleton<ICryptoService, CryptoService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
 builder.Services.AddScoped<IDebitoAutomaticoService, DebitoAutomaticoService>();
+builder.Services.AddScoped<IProductoService, ProductoService>();
+builder.Services.AddScoped<IVentaProductoService, VentaProductoService>();
 
 // CORS
 builder.Services.AddCors(options =>

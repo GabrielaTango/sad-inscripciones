@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -45,6 +46,87 @@ public class EmailService : IEmailService
 
     public Task EnviarReservaPagadaAsync(Inscripcion inscripcion) =>
         EnviarTemplateInscripcionAsync(inscripcion, TemplateReservaPagada, "reserva pagada");
+
+    public async Task<bool> EnviarConfirmacionVentaAsync(VentaProducto venta, Producto producto)
+    {
+        try
+        {
+            var config = await GetConfigAsync();
+            if (!config.Activo)
+            {
+                _logger.LogInformation("Email deshabilitado en config; no se envía mail de venta {Id}", venta.Id);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(venta.Email))
+            {
+                _logger.LogWarning("Venta {Id} sin Email; no se envía mail de confirmación.", venta.Id);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(producto.MailAsunto) || string.IsNullOrWhiteSpace(producto.MailCuerpoHtml))
+            {
+                _logger.LogInformation(
+                    "Producto {ProductoId} sin MailAsunto/MailCuerpoHtml; no se envía mail para venta {VentaId}",
+                    producto.Id, venta.Id);
+                return false;
+            }
+
+            var variables = BuildVariablesVenta(venta, producto);
+            var asunto = ReplaceVariables(producto.MailAsunto, variables);
+            var body = ReplaceVariables(producto.MailCuerpoHtml, variables);
+
+            await SendAsync(config, venta.Email, asunto, body);
+            _logger.LogInformation("Mail de confirmación de venta enviado a {Email} para venta {Id}", venta.Email, venta.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falló envío de mail de confirmación para venta {Id} ({Email})", venta.Id, venta.Email);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Variables para el mail de venta: Nombre, Apellido, Dni, Email, Producto e Importe
+    /// (mismo formato que usa BuildVariables para Importe), más una entrada por cada clave
+    /// de DatosExtra. Todos los valores sustituidos vienen HTML-encodeados porque, a
+    /// diferencia de Inscripcion/Evento, son datos tipeados por el comprador.
+    /// </summary>
+    private static Dictionary<string, string> BuildVariablesVenta(VentaProducto venta, Producto producto)
+    {
+        var ar = CultureInfo.GetCultureInfo("es-AR");
+        var vars = new Dictionary<string, string>
+        {
+            ["Nombre"] = System.Net.WebUtility.HtmlEncode(venta.Nombre),
+            ["Apellido"] = System.Net.WebUtility.HtmlEncode(venta.Apellido),
+            ["Dni"] = System.Net.WebUtility.HtmlEncode(venta.Dni),
+            ["Email"] = System.Net.WebUtility.HtmlEncode(venta.Email),
+            ["Producto"] = System.Net.WebUtility.HtmlEncode(producto.Nombre),
+            ["Importe"] = venta.Importe.ToString("C2", ar),
+        };
+
+        if (!string.IsNullOrWhiteSpace(venta.DatosExtra))
+        {
+            Dictionary<string, string>? datosExtra = null;
+            try
+            {
+                datosExtra = JsonSerializer.Deserialize<Dictionary<string, string>>(venta.DatosExtra);
+            }
+            catch (JsonException)
+            {
+                // DatosExtra corrupto o con forma inesperada: se ignora, el mail sale sin esas variables.
+            }
+
+            if (datosExtra != null)
+            {
+                foreach (var kvp in datosExtra)
+                    vars[kvp.Key] = System.Net.WebUtility.HtmlEncode(kvp.Value ?? string.Empty);
+            }
+        }
+
+        return vars;
+    }
 
     private async Task EnviarTemplateInscripcionAsync(Inscripcion inscripcion, string codigo, string descripcionLog)
     {

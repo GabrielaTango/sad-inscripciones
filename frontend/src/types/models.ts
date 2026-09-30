@@ -401,3 +401,92 @@ export interface EmailTemplateForm {
   bodyJson?: string | null
   activo: boolean
 }
+
+export interface CampoExtraProducto {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'select'
+  options: string[]
+  required: boolean
+}
+
+export interface Producto {
+  id: number
+  nombre: string
+  descripcion?: string
+  precio: number
+  activo: boolean
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+  mailAsunto?: string
+  mailCuerpoHtml?: string
+  fechaAlta: string
+}
+
+export interface ProductoPublico {
+  id: number
+  nombre: string
+  descripcion?: string
+  precio: number
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+}
+
+export interface ProductoForm {
+  nombre: string
+  descripcion?: string
+  precio: number
+  activo: boolean
+  imagenUrl?: string
+  camposExtra: CampoExtraProducto[]
+  mailAsunto?: string
+  mailCuerpoHtml?: string
+}
+
+export interface VentaProductoCreateForm {
+  productoId: number
+  dni: string
+  nombre: string
+  apellido: string
+  email: string
+  datosExtra: Record<string, string>
+}
+
+export interface VentaProductoCreateResult {
+  ventaId: number
+  publicRef: string
+  initPoint: string
+}
+
+export interface VentaProductoEstado {
+  estado: 'Pendiente' | 'Pagada' | 'Rechazada'
+  productoId: number
+  productoNombre: string
+  nombre: string
+  importe: number
+}
+
+export interface VentaProductoAdmin {
+  id: number
+  productoId: number
+  productoNombre: string
+  dni: string
+  nombre: string
+  apellido: string
+  email: string
+  datosExtra: Record<string, string>
+  importe: number
+  estado: 'Pendiente' | 'Pagada' | 'Rechazada'
+  mpPaymentId?: number | null
+  fechaAlta: string
+  fechaPago?: string | null
+  mailEnviado: boolean
+}
+
+export interface VentaProductoAdminFiltros {
+  productoId?: number
+  estado?: string
+  desde?: string
+  hasta?: string
+  texto?: string
+}

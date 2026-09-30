@@ -11,6 +11,9 @@ public class MercadoPagoPreferenceResult
 public interface IMercadoPagoService
 {
     Task<MercadoPagoPreferenceResult> CrearPreferenciaAsync(Inscripcion inscripcion, string eventoTitulo, int cuotas = 1, decimal? montoOverride = null);
+
+    /// <summary>Crea la preferencia de pago para una venta de producto (módulo standalone, sin cuotas).</summary>
+    Task<MercadoPagoPreferenceResult> CrearPreferenciaVentaAsync(VentaProducto venta, string productoNombre);
     Task<MercadoPagoPaymentInfo?> ObtenerInfoPagoAsync(long paymentId);
     Task<MercadoPagoPaymentInfo?> BuscarPagoPorReferenciaAsync(string externalReference);
     Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarTodosPagosPorReferenciaAsync(string externalReference);

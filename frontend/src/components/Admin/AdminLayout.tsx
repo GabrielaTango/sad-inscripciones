@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Bookmark, Users, CalendarDays, UserCheck, CreditCard, Award, Gift, UserCog, Receipt, Mail, MessageSquare, FileText, Wallet, DollarSign } from 'lucide-react'
+import { LayoutDashboard, Bookmark, Users, CalendarDays, UserCheck, CreditCard, Award, Gift, UserCog, Receipt, Mail, MessageSquare, FileText, Wallet, DollarSign, Package } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const menuItems: { path: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -7,6 +7,8 @@ const menuItems: { path: string; label: string; icon: LucideIcon; end?: boolean 
   { path: '/admin/tipos-evento', label: 'Tipos de Evento', icon: Bookmark },
   { path: '/admin/tipos-alumno', label: 'Tipos de Alumno', icon: Users },
   { path: '/admin/eventos', label: 'Eventos', icon: CalendarDays },
+  { path: '/admin/productos', label: 'Productos', icon: Package, end: true },
+  { path: '/admin/productos/ventas', label: 'Ventas productos', icon: Receipt },
   { path: '/admin/inscripciones', label: 'Inscripciones', icon: UserCheck },
   { path: '/admin/pagos', label: 'Pagos', icon: CreditCard },
   { path: '/admin/becas', label: 'Becas', icon: Award },
