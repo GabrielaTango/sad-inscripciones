@@ -68,3 +68,7 @@ Feature complete (T1-T6). Manual end-to-end test in MercadoPago sandbox + apply 
 - `dc178a4`, `4998ef0` Pago Fácil and Rapipago excluded from product checkout; return page shows "Compra realizada" confirmation with buyer, amount and MP payment reference.
 - Decision: no "resend email" action (user declined). Mail is sent once on Pendiente -> Pagada; if SMTP is inactive/failing at that moment, it is not retried.
 - Pending (user decision, not applied): `docker-compose.yml` has `MercadoPago__BackendPublicUrl` pointing at the ngrok host; production should use `https://www.diabetes2.org.ar`. `docker-compose.ngrok.yml` lacks the key.
+
+## T7 Public product catalog (added 2026-09-30)
+Decision: products are shown separately from eventos (no shared list, card or service); only site chrome (Navbar, Footer, HomePage) is touched.
+- [x] T7 `/productos` catalog page + `ProductoCard`; "Productos" link in Navbar (desktop + mobile) and Footer; "Volver a productos" link on purchase page; HomePage "Productos" section below "Próximos Eventos" (max 3, own fetch/loading, hidden if none or on error, "Ver todos los productos" button). Route: delegated writer (4+ files). Checks: `npm run build`, `npx eslint` on touched files. Done: build OK, eslint clean on touched files except pre-existing Navbar.tsx:22 set-state-in-effect.

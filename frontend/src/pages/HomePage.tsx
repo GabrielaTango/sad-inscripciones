@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GraduationCap, BookOpen, Users, Calendar, MapPin, Laptop, ArrowRight, UserPlus, CalendarX } from 'lucide-react'
 import Hero from '../components/Hero/Hero'
+import ProductoCard from '../components/Productos/ProductoCard'
+import { productosService } from '../services/productosService'
 import { eventosService } from '../services/eventosService'
 import { tiposEventoService } from '../services/tiposEventoService'
-import type { Evento, TipoEvento } from '../types/models'
+import type { Evento, TipoEvento, ProductoPublico } from '../types/models'
 
 const badgeColor = (tipo: string) => {
   const map: Record<string, string> = {
@@ -21,6 +23,7 @@ const HomePage = () => {
   const [proximos, setProximos] = useState<Evento[]>([])
   const [tiposEvento, setTiposEvento] = useState<TipoEvento[]>([])
   const [loadingEventos, setLoadingEventos] = useState(true)
+  const [productos, setProductos] = useState<ProductoPublico[]>([])
 
   useEffect(() => {
     const load = async () => {
@@ -43,6 +46,13 @@ const HomePage = () => {
       }
     }
     load()
+  }, [])
+
+  // Productos: fetch propio; si falla o no hay productos, la sección no se muestra.
+  useEffect(() => {
+    productosService.getAll()
+      .then(ps => setProductos(ps.slice(0, 3)))
+      .catch(() => setProductos([]))
   }, [])
 
   const tipoNombre = (tipoId: number) => tiposEvento.find(t => t.id === tipoId)?.nombre || 'Evento'
@@ -166,6 +176,32 @@ const HomePage = () => {
           </div>
         </div>
       </section>
+
+      {/* Productos */}
+      {productos.length > 0 && (
+        <section className="py-16 md:py-24">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="section-label">TIENDA</span>
+              <h2 className="section-title">Productos</h2>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-6">
+              {productos.map((producto) => (
+                <div key={producto.id} className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]">
+                  <ProductoCard producto={producto} />
+                </div>
+              ))}
+            </div>
+
+            <div className="text-center mt-4">
+              <Link to="/productos" className="btn-primary px-4">
+                Ver todos los productos <ArrowRight className="w-4 h-4 inline-block ml-1" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* CTA Inscripción */}
       <section className="py-16 md:py-24 text-white text-center bg-gradient-to-br from-slate-800 to-slate-900">

@@ -40,6 +40,7 @@ import EmailTemplateEditorPage from './pages/admin/EmailTemplateEditorPage'
 import ProductosAdminPage from './pages/admin/ProductosAdminPage'
 import ProductoDetallePage from './pages/admin/ProductoDetallePage'
 import VentasProductoAdminPage from './pages/admin/VentasProductoAdminPage'
+import ProductosPage from './pages/ProductosPage'
 import ComprarProductoPage from './pages/ComprarProductoPage'
 import ProductoPagoResultadoPage from './pages/ProductoPagoResultadoPage'
 
@@ -56,6 +57,7 @@ function App() {
             <Route path="/nosotros" element={<NosotrosPage />} />
             <Route path="/eventos" element={<EventosPage />} />
             <Route path="/inscripcion/:eventoId" element={<InscripcionPage />} />
+            <Route path="/productos" element={<ProductosPage />} />
             <Route path="/productos/:id/comprar" element={<ComprarProductoPage />} />
             <Route path="/productos/pago/resultado" element={<ProductoPagoResultadoPage />} />
             <Route path="/contacto" element={<ContactoPage />} />

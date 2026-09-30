@@ -70,6 +70,7 @@ const Navbar = () => {
             {!isAdmin && (
               <NavLink className={navLinkClass} to="/eventos">Eventos</NavLink>
             )}
+            <NavLink className={navLinkClass} to="/productos">Productos</NavLink>
             {!esCapitulo && !isAdmin && (
               <NavLink className={navLinkClass} to="/mis-inscripciones">
                 Inscripciones{badge(inscripcionesPendientes)}
@@ -149,6 +150,7 @@ const Navbar = () => {
               {!isAdmin && (
                 <NavLink className={navLinkClass} to="/eventos" onClick={() => setMobileOpen(false)}>Eventos</NavLink>
               )}
+              <NavLink className={navLinkClass} to="/productos" onClick={() => setMobileOpen(false)}>Productos</NavLink>
               {!esCapitulo && !isAdmin && (
                 <NavLink className={navLinkClass} to="/mis-inscripciones" onClick={() => setMobileOpen(false)}>
                   Inscripciones{badge(inscripcionesPendientes)}

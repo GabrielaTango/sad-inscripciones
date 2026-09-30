@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Send, AlertCircle } from 'lucide-react'
+import { Send, AlertCircle, ArrowLeft } from 'lucide-react'
 import { productosService } from '../services/productosService'
 import { ventasProductoService } from '../services/ventasProductoService'
 import type { ProductoPublico } from '../types/models'
@@ -118,6 +118,11 @@ const ComprarProductoPage = () => {
 
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4">
+          <div className="max-w-3xl mx-auto mb-4">
+            <Link to="/productos" className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-blue-600">
+              <ArrowLeft className="w-4 h-4" /> Volver a productos
+            </Link>
+          </div>
           <div className="flex justify-center">
             <div className="w-full max-w-3xl">
               <div className="card rounded-2xl border-slate-200">
