@@ -33,14 +33,30 @@ public class InscripcionPagoValidationService : IInscripcionPagoValidationServic
         _logger = logger;
     }
 
-    public async Task<ValidacionInscripcionResult> ValidarInscripcionAsync(int inscripcionId)
+    public async Task<ValidacionInscripcionResult> ValidarInscripcionAsync(int inscripcionId, MercadoPagoPaymentInfo? pagoConocido = null)
     {
         var inscripcion = await _inscripcionRepository.GetByIdAsync(inscripcionId)
             ?? throw new ArgumentException($"Inscripcion {inscripcionId} no encontrada", nameof(inscripcionId));
 
         var estadoAnterior = inscripcion.Estado;
-        var mpPagos = await _mpService.BuscarTodosPagosPorReferenciaAsync(
-            ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef));
+        var referencia = ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef);
+        var mpPagos = (await _mpService.BuscarTodosPagosPorReferenciaAsync(referencia)).ToList();
+
+        // El search de MP es eventualmente consistente: el pago recien hecho puede no aparecer
+        // todavia. Cuando el caller ya lo trajo por id (webhook o vuelta del checkout), lo
+        // agregamos a mano; si no, pagar el saldo de una reserva no sumaba nada y la inscripcion
+        // se quedaba en "Reservada" hasta la siguiente validacion.
+        if (pagoConocido != null && pagoConocido.ExternalReference == referencia)
+        {
+            // Si el search ya lo trajo, igual nos quedamos con esta version: GET /payments/{id}
+            // es la fuente autoritativa del estado.
+            var yaListado = mpPagos.RemoveAll(p => p.Id == pagoConocido.Id) > 0;
+            mpPagos.Add(pagoConocido);
+            if (!yaListado)
+                _logger.LogInformation(
+                    "Pago MP {PaymentId} agregado a mano: el search todavia no lo lista (ref={Ref})",
+                    pagoConocido.Id, referencia);
+        }
 
         var existentes = (await _pagoRepository.GetByInscripcionIdAsync(inscripcionId))
             .Where(p => p.DeletedAt == null)

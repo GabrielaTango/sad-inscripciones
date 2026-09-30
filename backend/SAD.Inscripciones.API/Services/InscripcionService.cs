@@ -215,12 +215,9 @@ public class InscripcionService : IInscripcionService
             cantidadCuotas = eventoPrecio.CantidadCuotas;
         }
 
-        // Calcular monto de reserva si corresponde
-        decimal? montoReserva = null;
-        if (dto.ModalidadPago == "reserva" && precioFinal > 0)
-        {
-            montoReserva = Math.Round(precioFinal * 0.3m, 0);
-        }
+        // MontoReserva queda null: la inscripción se crea sin elegir forma de pago. Se fija
+        // recién cuando la persona pide el pago de la reserva desde "Mis Inscripciones"
+        // (ver EstablecerMontoReservaAsync).
 
         // Monto final en USD para categorías extranjeras con beca (se cobra por PayPal). El
         // descuento se aplica sobre el precio en dólares y solo para becas de tipo porcentaje
@@ -250,7 +247,7 @@ public class InscripcionService : IInscripcionService
             PrecioFinal = precioFinal,
             PrecioFinalCuotas = precioFinalCuotas,
             CantidadCuotas = cantidadCuotas,
-            MontoReserva = montoReserva,
+            MontoReserva = null,
             PrecioFinalDolares = precioFinalDolares,
             Estado = "Pendiente",
             FechaInscripcion = DateTime.UtcNow,
@@ -346,7 +343,35 @@ public class InscripcionService : IInscripcionService
 
     public async Task<IEnumerable<DTOs.InscripcionPendienteDto>> GetPendientesByDocumentoAsync(string documento, int? eventoId)
     {
-        return await _repository.GetPendientesByDocumentoAsync(documento, eventoId);
+        var pendientes = (await _repository.GetPendientesByDocumentoAsync(documento, eventoId)).ToList();
+        // El importe de reserva se calcula acá (y no en SQL) para que el número del botón sea
+        // exactamente el que después se cobra al reservar.
+        foreach (var p in pendientes)
+            p.MontoReservaSugerido = CalcularMontoReserva(p.PrecioFinal);
+        return pendientes;
+    }
+
+    // La reserva es el 30% del precio final, redondeado a peso entero.
+    public static decimal CalcularMontoReserva(decimal precioFinal) =>
+        Math.Round(precioFinal * 0.3m, 0, MidpointRounding.AwayFromZero);
+
+    public async Task<decimal> EstablecerMontoReservaAsync(int id, string updatedBy)
+    {
+        var inscripcion = await GetByIdAsync(id);
+
+        if (inscripcion.Estado != "Pendiente")
+            throw new BusinessException("Solo se puede reservar una inscripción pendiente de pago.");
+        if (inscripcion.PrecioFinal <= 0)
+            throw new BusinessException("La inscripción no requiere pago.");
+
+        // Si ya se había pedido una reserva antes, se respeta ese monto (el link de pago viejo
+        // puede seguir vivo y no queremos dos importes distintos para la misma inscripción).
+        if (inscripcion.MontoReserva.HasValue)
+            return inscripcion.MontoReserva.Value;
+
+        var monto = CalcularMontoReserva(inscripcion.PrecioFinal);
+        await _repository.UpdateMontoReservaAsync(id, monto, updatedBy);
+        return monto;
     }
 
     public async Task<int> CountPendientesByDocumentoAsync(string documento)

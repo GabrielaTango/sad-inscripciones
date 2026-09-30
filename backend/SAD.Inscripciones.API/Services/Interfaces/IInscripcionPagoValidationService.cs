@@ -20,6 +20,11 @@ public class ValidacionBatchResult
 
 public interface IInscripcionPagoValidationService
 {
-    Task<ValidacionInscripcionResult> ValidarInscripcionAsync(int inscripcionId);
+    /// <param name="pagoConocido">
+    /// Pago traído por id de MP (webhook / vuelta del checkout). El search de MP es
+    /// eventualmente consistente y suele no listar todavía el pago recién hecho, así que
+    /// se suma a mano al resultado del search para no perderlo.
+    /// </param>
+    Task<ValidacionInscripcionResult> ValidarInscripcionAsync(int inscripcionId, MercadoPagoPaymentInfo? pagoConocido = null);
     Task<ValidacionBatchResult> ValidarPendientesPorDocumentoAsync(string documento);
 }

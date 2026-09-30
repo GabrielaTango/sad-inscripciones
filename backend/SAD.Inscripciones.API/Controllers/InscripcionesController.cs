@@ -152,16 +152,18 @@ public class InscripcionesController : ControllerBase
                     inscripcion.Id,
                     inscripcion.PrecioFinal,
                     initPoint = (string?)null,
+                    estado = "Confirmada",
                     message = "Inscripcion registrada sin costo."
                 });
             }
 
-            _logger.LogInformation(">>> Inscripcion {Id} es extranjera, pago por PayPal montoUsd={Monto}", inscripcion.Id, montoUsd);
+            _logger.LogInformation(">>> Inscripcion {Id} es extranjera, se cobra en USD por PayPal desde Mis Inscripciones (montoUsd={Monto})", inscripcion.Id, montoUsd);
             return Ok(new
             {
                 inscripcion.Id,
                 inscripcion.PrecioFinal,
                 initPoint = (string?)null,
+                estado = inscripcion.Estado,
                 paypal = true,
                 montoUsd,
                 moneda = "USD",
@@ -178,40 +180,20 @@ public class InscripcionesController : ControllerBase
                 inscripcion.Id,
                 inscripcion.PrecioFinal,
                 initPoint = (string?)null,
+                estado = "Confirmada",
                 message = "Inscripcion registrada sin costo."
             });
         }
 
-        // Crear preferencia de Mercado Pago
-        try
+        // La inscripción queda Pendiente y sin forma de pago elegida: el medio (un pago, cuotas
+        // o reserva) se elige después en "Mis Inscripciones", que llama a generar-pago.
+        return Ok(new
         {
-            var evento = await _eventoService.GetByIdAsync(inscripcion.EventoId);
-            var cuotas = Math.Clamp(dto.Cuotas, 1, 6);
-            decimal montoMP;
-            if (dto.ModalidadPago == "reserva" && inscripcion.MontoReserva.HasValue)
-                montoMP = inscripcion.MontoReserva.Value;
-            else if (cuotas > 1 && inscripcion.PrecioFinalCuotas.HasValue)
-                montoMP = inscripcion.PrecioFinalCuotas.Value;
-            else
-                montoMP = inscripcion.PrecioFinal;
-            var mpResult = await _mercadoPagoService.CrearPreferenciaAsync(inscripcion, evento.Titulo, cuotas, montoMP);
-
-            _logger.LogInformation("MP Preference creada: Id={PreferenceId}, InitPoint={InitPoint}",
-                mpResult.PreferenceId, mpResult.InitPoint);
-
-            return Ok(new
-            {
-                inscripcion.Id,
-                inscripcion.PrecioFinal,
-                mpResult.InitPoint,
-                mpResult.PreferenceId,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error al crear preferencia de Mercado Pago para inscripcion {InscripcionId}", inscripcion.Id);
-            throw new Exceptions.BusinessException($"La inscripcion fue registrada (#{inscripcion.Id}), pero hubo un error al generar el link de pago: {ex.Message}");
-        }
+            inscripcion.Id,
+            inscripcion.PrecioFinal,
+            initPoint = (string?)null,
+            estado = inscripcion.Estado,
+        });
     }
 
     [HttpPost("{id}/generar-pago")]
@@ -224,6 +206,31 @@ public class InscripcionesController : ControllerBase
 
         if (inscripcion.PrecioFinal <= 0)
             return BadRequest(new { error = "La inscripcion no requiere pago." });
+
+        // Reserva de vacante: se cobra el 30% y el resto queda para más adelante. El monto se
+        // fija ahora (la inscripción se creó sin forma de pago elegida) y el estado recién pasa
+        // a "Reservada" cuando el pago se acredita.
+        if (dto?.Modalidad == "reserva")
+        {
+            var montoReserva = await _service.EstablecerMontoReservaAsync(id, GetCurrentUser());
+            try
+            {
+                var eventoReserva = await _eventoService.GetByIdAsync(inscripcion.EventoId);
+                var mpReserva = await _mercadoPagoService.CrearPreferenciaAsync(inscripcion, eventoReserva.Titulo, 1, montoReserva);
+                return Ok(new
+                {
+                    inscripcion.Id,
+                    inscripcion.PrecioFinal,
+                    mpReserva.InitPoint,
+                    mpReserva.PreferenceId,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al crear preferencia de MP para la reserva de inscripcion {Id}", id);
+                return StatusCode(500, new { error = $"Error al generar el link de pago: {ex.Message}" });
+            }
+        }
 
         try
         {
@@ -264,34 +271,13 @@ public class InscripcionesController : ControllerBase
     {
         var inscripcion = await _service.GetByIdAsync(id);
 
-        // Si sigue pendiente o reservada, consultar a MP por si ya se pagó
+        // Si sigue pendiente o reservada, consultamos a MP por si ya se pagó. El estado sale de
+        // comparar lo acreditado contra PrecioFinal/MontoReserva (misma lógica que el webhook y
+        // confirmar-pago): con la reserva paga queda "Reservada", con el total "Confirmada".
         if (inscripcion.Estado == "Pendiente" || inscripcion.Estado == "Reservada")
         {
-            var paymentInfo = await _mercadoPagoService.BuscarPagoPorReferenciaAsync(
-                ExternalReferenceHelper.Build(inscripcion.Id, inscripcion.PublicRef));
-            if (paymentInfo != null && paymentInfo.Status == "approved")
-            {
-                string nuevoEstado;
-                if (inscripcion.Estado == "Pendiente" && inscripcion.MontoReserva.HasValue)
-                    nuevoEstado = "Reservada";
-                else if (inscripcion.Estado == "Reservada")
-                    nuevoEstado = "Confirmada";
-                else
-                    nuevoEstado = "Confirmada";
-
-                if (nuevoEstado != inscripcion.Estado)
-                {
-                    await _service.UpdateEstadoAsync(id, nuevoEstado, "mercadopago");
-                    inscripcion.Estado = nuevoEstado;
-                    _logger.LogInformation(">>> Estado actualizado via consulta MP: inscripcion={Id}, estado={Estado}",
-                        id, nuevoEstado);
-                }
-            }
-            else if (paymentInfo != null && (paymentInfo.Status == "rejected" || paymentInfo.Status == "cancelled"))
-            {
-                await _service.UpdateEstadoAsync(id, "Rechazada", "mercadopago");
-                inscripcion.Estado = "Rechazada";
-            }
+            var validacion = await _pagoValidation.ValidarInscripcionAsync(id);
+            inscripcion.Estado = validacion.EstadoNuevo;
         }
 
         return Ok(new
@@ -313,20 +299,35 @@ public class InscripcionesController : ControllerBase
         _logger.LogInformation(">>> ConfirmarPago: paymentId={PaymentId}, externalReference={ExtRef}",
             dto.PaymentId, dto.ExternalReference);
 
-        // Resolver inscripcionId: preferimos el externalReference enviado por MP en la query;
-        // si no vino, consultamos MP por paymentId.
-        int inscripcionId;
-        if (!ExternalReferenceHelper.TryParseInscripcionId(dto.ExternalReference, out inscripcionId))
+        // Traemos el pago por id: GET /v1/payments/{id} es consistente al instante, mientras que
+        // el search por external_reference que usa la validacion tarda en indexarlo. Se lo pasamos
+        // a ValidarInscripcion para que el pago cuente en esta misma request (si no, pagar el
+        // saldo de una reserva dejaba la inscripcion en "Reservada" y el pago sin registrar).
+        MercadoPagoPaymentInfo? paymentInfo = null;
+        try
         {
-            var paymentInfo = await _mercadoPagoService.ObtenerInfoPagoAsync(dto.PaymentId);
-            if (paymentInfo == null || !ExternalReferenceHelper.TryParseInscripcionId(paymentInfo.ExternalReference, out inscripcionId))
-                return BadRequest(new { error = "Referencia de inscripción inválida." });
+            paymentInfo = await _mercadoPagoService.ObtenerInfoPagoAsync(dto.PaymentId);
+        }
+        catch (Exception ex)
+        {
+            // Un paymentId invalido o un error de MP no debe voltear la confirmacion: seguimos
+            // con lo que devuelva el search por referencia.
+            _logger.LogWarning(ex, "No se pudo obtener el pago MP {PaymentId}", dto.PaymentId);
+        }
+
+        // Resolver inscripcionId: preferimos el externalReference enviado por MP en la query;
+        // si no vino, usamos el del pago.
+        int inscripcionId;
+        if (!ExternalReferenceHelper.TryParseInscripcionId(dto.ExternalReference, out inscripcionId)
+            && !ExternalReferenceHelper.TryParseInscripcionId(paymentInfo?.ExternalReference, out inscripcionId))
+        {
+            return BadRequest(new { error = "Referencia de inscripción inválida." });
         }
 
         ValidacionInscripcionResult resultado;
         try
         {
-            resultado = await _pagoValidation.ValidarInscripcionAsync(inscripcionId);
+            resultado = await _pagoValidation.ValidarInscripcionAsync(inscripcionId, paymentInfo);
         }
         catch (ArgumentException)
         {
@@ -407,4 +408,7 @@ public class ConfirmarPagoDto
 public class GenerarPagoDto
 {
     public int Cuotas { get; set; } = 1;
+
+    /// <summary>"reserva" para cobrar solo el anticipo; null/vacío cobra el total (o el saldo).</summary>
+    public string? Modalidad { get; set; }
 }
