@@ -40,8 +40,4 @@ public class InscripcionCreateDto
     public string? Especialidad { get; set; }
     public string? Institucion { get; set; }
     public string? Sector { get; set; }
-
-    public int Cuotas { get; set; } = 1;
-
-    public string? ModalidadPago { get; set; }
 }

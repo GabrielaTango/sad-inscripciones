@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using SAD.Inscripciones.API.Models;
-using SAD.Inscripciones.API.Repositories.Interfaces;
 using SAD.Inscripciones.API.Services;
 using SAD.Inscripciones.API.Services.Interfaces;
 
@@ -11,21 +9,18 @@ namespace SAD.Inscripciones.API.Controllers;
 public class MercadoPagoWebhookController : ControllerBase
 {
     private readonly IMercadoPagoService _mpService;
-    private readonly IPagoRepository _pagoRepository;
-    private readonly IInscripcionRepository _inscripcionRepository;
+    private readonly IInscripcionPagoValidationService _pagoValidation;
     private readonly IInscripcionService _inscripcionService;
     private readonly ILogger<MercadoPagoWebhookController> _logger;
 
     public MercadoPagoWebhookController(
         IMercadoPagoService mpService,
-        IPagoRepository pagoRepository,
-        IInscripcionRepository inscripcionRepository,
+        IInscripcionPagoValidationService pagoValidation,
         IInscripcionService inscripcionService,
         ILogger<MercadoPagoWebhookController> logger)
     {
         _mpService = mpService;
-        _pagoRepository = pagoRepository;
-        _inscripcionRepository = inscripcionRepository;
+        _pagoValidation = pagoValidation;
         _inscripcionService = inscripcionService;
         _logger = logger;
     }
@@ -56,68 +51,35 @@ public class MercadoPagoWebhookController : ControllerBase
             return Ok();
         }
 
-        var inscripcion = await _inscripcionRepository.GetByIdAsync(inscripcionId);
-        if (inscripcion == null)
+        // Registra/actualiza los pagos de la inscripcion y resuelve el estado comparando lo
+        // acreditado contra PrecioFinal y MontoReserva: pagar la reserva (30%) deja la
+        // inscripcion en "Reservada", no en "Confirmada". Es la misma logica que usa
+        // confirmar-pago, asi que webhook y vuelta del checkout no se pisan entre si.
+        ValidacionInscripcionResult resultado;
+        try
+        {
+            resultado = await _pagoValidation.ValidarInscripcionAsync(inscripcionId, paymentInfo);
+        }
+        catch (ArgumentException)
         {
             _logger.LogWarning("Inscripcion {Id} no encontrada para pago MP", inscripcionId);
             return Ok();
         }
 
-        // Mapear estado de MP a nuestro estado
-        var estadoPago = paymentInfo.Status switch
+        // Rechazo: solo aplica si no hay nada acreditado. Un rechazo posterior (reintento de
+        // tarjeta, contracargo de una cuota) no debe pisar una inscripcion ya reservada o pagada.
+        var esRechazo = paymentInfo.Status is "rejected" or "cancelled" or "refunded" or "charged_back";
+        if (esRechazo && resultado.MontoAprobado <= 0 && resultado.EstadoNuevo == "Pendiente")
         {
-            "approved" => "Confirmado",
-            "pending" or "in_process" or "authorized" => "Pendiente",
-            "rejected" or "cancelled" or "refunded" or "charged_back" => "Rechazado",
-            _ => "Pendiente"
-        };
-
-        // Crear o actualizar registro de pago
-        var pagosExistentes = await _pagoRepository.GetByInscripcionIdAsync(inscripcionId);
-        var pagoExistente = pagosExistentes.FirstOrDefault(p =>
-            p.ReferenciaExterna == paymentId.ToString() && p.DeletedAt == null);
-
-        if (pagoExistente != null)
-        {
-            pagoExistente.EstadoPago = estadoPago;
-            pagoExistente.UpdatedBy = "mercadopago";
-            if (estadoPago == "Confirmado")
-                pagoExistente.FechaPago = DateTime.UtcNow;
-            await _pagoRepository.UpdateAsync(pagoExistente);
-        }
-        else
-        {
-            var pago = new Pago
-            {
-                InscripcionId = inscripcionId,
-                MedioPago = $"MercadoPago ({paymentInfo.PaymentMethodId})",
-                EstadoPago = estadoPago,
-                Monto = paymentInfo.TransactionAmount,
-                ReferenciaExterna = paymentId.ToString(),
-                FechaPago = estadoPago == "Confirmado" ? DateTime.UtcNow : null,
-                Observaciones = $"MP Payment ID: {paymentId} - Status: {paymentInfo.Status}/{paymentInfo.StatusDetail}",
-                CreatedBy = "mercadopago",
-                UpdatedBy = "mercadopago"
-            };
-            await _pagoRepository.CreateAsync(pago);
+            await _inscripcionService.UpdateEstadoAsync(inscripcionId, "Rechazada", "mercadopago");
+            _logger.LogInformation("Pago MP {PaymentId} rechazado ({Status}): inscripcion {Id} → Rechazada",
+                paymentId, paymentInfo.Status, inscripcionId);
+            return Ok();
         }
 
-        // Actualizar estado de inscripcion
-        var estadoInscripcion = estadoPago switch
-        {
-            "Confirmado" => "Confirmada",
-            "Rechazado" => "Rechazada",
-            _ => inscripcion.Estado // No cambiar si sigue pendiente
-        };
-
-        if (estadoInscripcion != inscripcion.Estado)
-        {
-            // Pasamos por el service para que dispare side-effects (cupones, mail).
-            await _inscripcionService.UpdateEstadoAsync(inscripcionId, estadoInscripcion, "mercadopago");
-        }
-
-        _logger.LogInformation("Pago MP {PaymentId} procesado: estado={Estado} inscripcion={InscripcionId}",
-            paymentId, estadoPago, inscripcionId);
+        _logger.LogInformation(
+            "Pago MP {PaymentId} procesado: inscripcion={Id}, {Anterior}→{Nuevo}, montoAprobado={Monto}",
+            paymentId, inscripcionId, resultado.EstadoAnterior, resultado.EstadoNuevo, resultado.MontoAprobado);
 
         return Ok();
     }

@@ -134,6 +134,19 @@ public class InscripcionRepository : IInscripcionRepository
         return await connection.ExecuteAsync(sql, new { Id = id, Estado = estado, UpdatedBy = updatedBy }) > 0;
     }
 
+    public async Task<bool> UpdateMontoReservaAsync(int id, decimal montoReserva, string updatedBy)
+    {
+        using var connection = _dbFactory.CreateConnection();
+        // Solo se fija sobre una inscripción todavía pendiente y sin reserva previa: una vez
+        // cobrada la reserva el monto es historia y no se toca (mismo criterio que el recálculo
+        // de precios). Idempotente: un segundo intento no pisa el valor original.
+        const string sql = @"
+            UPDATE Inscripciones
+            SET MontoReserva = @MontoReserva, UpdatedBy = @UpdatedBy, UpdatedAt = UTC_TIMESTAMP()
+            WHERE Id = @Id AND DeletedAt IS NULL AND Estado = 'Pendiente' AND MontoReserva IS NULL";
+        return await connection.ExecuteAsync(sql, new { Id = id, MontoReserva = montoReserva, UpdatedBy = updatedBy }) > 0;
+    }
+
     public async Task<int> RecalcularPreciosByEventoTipoAlumnoAsync(int eventoId, int tipoAlumnoId, decimal nuevoPrecioBase, decimal? nuevoPrecioCuotas, int nuevaCantidadCuotas, string updatedBy)
     {
         // Recalcula los precios de las inscripciones aún no cobradas (Reservada/Pendiente) cuando se cambia
