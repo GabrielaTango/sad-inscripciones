@@ -71,4 +71,15 @@ Feature complete (T1-T6). Manual end-to-end test in MercadoPago sandbox + apply 
 
 ## T7 Public product catalog (added 2026-09-30)
 Decision: products are shown separately from eventos (no shared list, card or service); only site chrome (Navbar, Footer, HomePage) is touched.
+
+## T8 Product image stored in the database (added 2026-10-05)
+Decision (user): the image is uploaded and stored in MySQL instead of a hand-typed URL. Supersedes "image URL" in Scope and `ImagenUrl` in Design.
+- Table `ProductoImagenes` (ProductoId PK/FK, Contenido MEDIUMBLOB, ContentType, UpdatedAt) in a new `SQL/Migration_ProductosImagen.sql`, which also drops `Productos.ImagenUrl`. Separate table so product listings never load the blob.
+- `GET api/productos/{id}/imagen` anonymous, binary response with cache headers; `PUT`/`DELETE api/productos/admin/{id}/imagen` Admin. Max 2 MB; PNG/JPEG/WebP only (no SVG: served same-origin).
+- Response DTOs keep `imagenUrl`, now computed (`/api/productos/{id}/imagen?v=<UpdatedAt ticks>` or null); removed from create/update DTOs.
+- Admin form: file picker with preview replaces the URL text input.
+- [x] T8 Route: delegated writer (2+ non-trivial files). Checks: `dotnet build`, `npm run build`, `npx eslint` on touched files. Done: `dotnet build` 0 errors (re-run by parent; same pre-existing `EventoPrecioService.cs` warning), `npm run build` OK, eslint clean on touched files (both writer-reported). Risk assessment: medium (RDD off -> writer self-verification + parent readback). Commit: `0582a72` (~270 lines).
+- Pending (manual): apply `SQL/Migration_ProductosImagen.sql` (drops `Productos.ImagenUrl`; existing URLs are lost) and test upload/replace/remove in the admin form. Not exercised against a running server or database.
+- Notes: upload validation trusts the client-declared content type (admin-only endpoint); the public image endpoint also serves images of inactive products; `?v=` has second precision.
+
 - [x] T7 `/productos` catalog page + `ProductoCard`; "Productos" link in Navbar (desktop + mobile) and Footer; "Volver a productos" link on purchase page; HomePage "Productos" section below "Próximos Eventos" (max 3, own fetch/loading, hidden if none or on error, "Ver todos los productos" button). Route: delegated writer (4+ files). Checks: `npm run build`, `npx eslint` on touched files. Done: build OK, eslint clean on touched files except pre-existing Navbar.tsx:22 set-state-in-effect. Commit: `e8c27a1`.

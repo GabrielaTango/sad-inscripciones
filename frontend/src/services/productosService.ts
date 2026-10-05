@@ -11,4 +11,23 @@ export const productosService = {
   create: (data: ProductoForm) => api.post<Producto>(BASE, data),
   update: (id: number, data: ProductoForm) => api.put<void>(`${BASE}/${id}`, data),
   remove: (id: number) => api.delete<{ deleted: string }>(`${BASE}/${id}`),
+  deleteImagen: (id: number) => api.delete<void>(`${BASE}/admin/${id}/imagen`),
+  uploadImagen: (id: number, file: File) => uploadImagen(id, file),
+}
+
+/** Uploads the product image as multipart (api.ts only sends JSON). */
+async function uploadImagen(id: number, file: File): Promise<void> {
+  const token = localStorage.getItem('sad_token')
+  const fd = new FormData()
+  fd.append('file', file)
+
+  const res = await fetch(`/api${BASE}/admin/${id}/imagen`, {
+    method: 'PUT',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: 'Error subiendo imagen' }))
+    throw new Error(body.message || body.error || `Error ${res.status}`)
+  }
 }

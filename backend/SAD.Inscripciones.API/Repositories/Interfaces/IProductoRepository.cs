@@ -27,4 +27,12 @@ public interface IProductoRepository
     /// sales exist, soft-deletes it instead by setting Activo = 0.
     /// </summary>
     Task<ProductoDeleteResult> DeleteAsync(int id);
+
+    /// <summary>Image of a product including its bytes, or null when it has none.</summary>
+    Task<ProductoImagen?> GetImagenAsync(int productoId);
+
+    /// <summary>Inserts or replaces the product's image (one per product).</summary>
+    Task UpsertImagenAsync(int productoId, byte[] contenido, string contentType);
+
+    Task<bool> DeleteImagenAsync(int productoId);
 }

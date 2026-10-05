@@ -58,7 +58,6 @@ public class ProductoService : IProductoService
             Descripcion = dto.Descripcion,
             Precio = dto.Precio,
             Activo = dto.Activo,
-            ImagenUrl = dto.ImagenUrl,
             CamposExtra = JsonSerializer.Serialize(camposExtra),
             MailAsunto = dto.MailAsunto,
             MailCuerpoHtml = dto.MailCuerpoHtml
@@ -76,7 +75,6 @@ public class ProductoService : IProductoService
         existente.Descripcion = dto.Descripcion;
         existente.Precio = dto.Precio;
         existente.Activo = dto.Activo;
-        existente.ImagenUrl = dto.ImagenUrl;
         existente.CamposExtra = JsonSerializer.Serialize(camposExtra);
         existente.MailAsunto = dto.MailAsunto;
         existente.MailCuerpoHtml = dto.MailCuerpoHtml;
@@ -92,6 +90,34 @@ public class ProductoService : IProductoService
 
         return resultado;
     }
+
+    public async Task<ProductoImagen> GetImagenAsync(int id)
+    {
+        return await _repository.GetImagenAsync(id) ?? throw new NotFoundException("Imagen de producto", id);
+    }
+
+    public async Task SetImagenAsync(int id, byte[] contenido, string contentType)
+    {
+        if (await _repository.GetByIdAsync(id) == null)
+            throw new NotFoundException("Producto", id);
+
+        await _repository.UpsertImagenAsync(id, contenido, contentType);
+    }
+
+    public async Task DeleteImagenAsync(int id)
+    {
+        if (await _repository.GetByIdAsync(id) == null)
+            throw new NotFoundException("Producto", id);
+
+        await _repository.DeleteImagenAsync(id);
+    }
+
+    /// <summary>
+    /// Relative URL of the product's image, versioned by its UpdatedAt ticks so
+    /// browsers refetch after a replacement; null when the product has no image.
+    /// </summary>
+    private static string? BuildImagenUrl(Producto producto) =>
+        producto.ImagenUpdatedAt is { } v ? $"/api/productos/{producto.Id}/imagen?v={v.Ticks}" : null;
 
     /// <summary>
     /// Validates the product's basic data and its CamposExtra schema, normalizing
@@ -159,7 +185,7 @@ public class ProductoService : IProductoService
         Descripcion = producto.Descripcion,
         Precio = producto.Precio,
         Activo = producto.Activo,
-        ImagenUrl = producto.ImagenUrl,
+        ImagenUrl = BuildImagenUrl(producto),
         CamposExtra = DeserializeCamposExtra(producto.CamposExtra),
         MailAsunto = producto.MailAsunto,
         MailCuerpoHtml = producto.MailCuerpoHtml,
@@ -172,7 +198,7 @@ public class ProductoService : IProductoService
         Nombre = producto.Nombre,
         Descripcion = producto.Descripcion,
         Precio = producto.Precio,
-        ImagenUrl = producto.ImagenUrl,
+        ImagenUrl = BuildImagenUrl(producto),
         CamposExtra = DeserializeCamposExtra(producto.CamposExtra)
     };
 

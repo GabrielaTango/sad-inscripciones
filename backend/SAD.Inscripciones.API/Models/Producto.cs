@@ -10,7 +10,12 @@ public class Producto : BaseEntity
     public string? Descripcion { get; set; }
     public decimal Precio { get; set; }
     public bool Activo { get; set; } = true;
-    public string? ImagenUrl { get; set; }
+
+    /// <summary>
+    /// UpdatedAt of the stored image (ProductoImagenes), null when the product has
+    /// none. Read-only projection filled by the LEFT JOIN; the blob is never loaded here.
+    /// </summary>
+    public DateTime? ImagenUpdatedAt { get; set; }
 
     /// <summary>
     /// JSON array of <see cref="CampoExtraProducto"/> describing the dynamic

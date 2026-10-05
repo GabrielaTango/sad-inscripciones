@@ -437,7 +437,6 @@ export interface ProductoForm {
   descripcion?: string
   precio: number
   activo: boolean
-  imagenUrl?: string
   camposExtra: CampoExtraProducto[]
   mailAsunto?: string
   mailCuerpoHtml?: string

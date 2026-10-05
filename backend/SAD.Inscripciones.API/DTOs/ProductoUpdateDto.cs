@@ -15,8 +15,6 @@ public class ProductoUpdateDto
 
     public bool Activo { get; set; } = true;
 
-    public string? ImagenUrl { get; set; }
-
     public List<CampoExtraProducto> CamposExtra { get; set; } = new();
 
     public string? MailAsunto { get; set; }
