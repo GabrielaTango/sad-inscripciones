@@ -1,4 +1,5 @@
 using SAD.Inscripciones.API.DTOs;
+using SAD.Inscripciones.API.Models;
 using SAD.Inscripciones.API.Repositories.Interfaces;
 
 namespace SAD.Inscripciones.API.Services.Interfaces;
@@ -20,4 +21,13 @@ public interface IProductoService
     Task<int> CreateAsync(ProductoCreateDto dto);
     Task UpdateAsync(int id, ProductoUpdateDto dto);
     Task<ProductoDeleteResult> DeleteAsync(int id);
+
+    /// <summary>Public image bytes: 404 if the product has no image.</summary>
+    Task<ProductoImagen> GetImagenAsync(int id);
+
+    /// <summary>Stores or replaces the product's image: 404 if the product does not exist.</summary>
+    Task SetImagenAsync(int id, byte[] contenido, string contentType);
+
+    /// <summary>Removes the product's image: 404 if the product does not exist. No-op if it has none.</summary>
+    Task DeleteImagenAsync(int id);
 }

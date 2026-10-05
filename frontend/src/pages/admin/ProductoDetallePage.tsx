@@ -1,18 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { productosService } from '../../services/productosService'
 import type { CampoExtraProducto, ProductoForm } from '../../types/models'
 
 const emptyCampoExtra = (): CampoExtraProducto => ({ key: '', label: '', type: 'text', options: [], required: false })
 
+const IMAGEN_MAX_BYTES = 2 * 1024 * 1024
+const IMAGEN_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+
 const emptyProductoForm: ProductoForm = {
-  nombre: '', descripcion: '', precio: 0, activo: true, imagenUrl: '', camposExtra: [], mailAsunto: '', mailCuerpoHtml: '',
+  nombre: '', descripcion: '', precio: 0, activo: true, camposExtra: [], mailAsunto: '', mailCuerpoHtml: '',
 }
 
 const ProductoDetallePage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const isNew = !id
   const productoId = Number(id) || 0
 
@@ -20,12 +24,21 @@ const ProductoDetallePage = () => {
   const [formOriginal, setFormOriginal] = useState<ProductoForm>(emptyProductoForm)
   const [initialLoading, setInitialLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  // After creating a product whose image upload failed, the edit page is opened with that error.
+  const [error, setError] = useState((location.state as { imagenError?: string } | null)?.imagenError ?? '')
   const [success, setSuccess] = useState('')
   // Texto crudo de las opciones mientras se edita, para no perder comas o espacios finales al tipear.
   const [opcionesDraft, setOpcionesDraft] = useState<Record<number, string>>({})
+  // Imagen: URL actual del servidor, archivo elegido pendiente de subir y pedido de quitar la actual.
+  const [imagenUrl, setImagenUrl] = useState<string | null>(null)
+  const [imagenFile, setImagenFile] = useState<File | null>(null)
+  const [imagenRemove, setImagenRemove] = useState(false)
+  const [imagenError, setImagenError] = useState('')
 
-  const formDirty = isNew || JSON.stringify(form) !== JSON.stringify(formOriginal)
+  const imagenPreview = useMemo(() => (imagenFile ? URL.createObjectURL(imagenFile) : null), [imagenFile])
+  useEffect(() => () => { if (imagenPreview) URL.revokeObjectURL(imagenPreview) }, [imagenPreview])
+
+  const formDirty = isNew || JSON.stringify(form) !== JSON.stringify(formOriginal) || imagenFile !== null || imagenRemove
 
   const load = useCallback(async () => {
     if (isNew) { setInitialLoading(false); return }
@@ -35,13 +48,15 @@ const ProductoDetallePage = () => {
       descripcion: producto.descripcion || '',
       precio: producto.precio,
       activo: producto.activo,
-      imagenUrl: producto.imagenUrl || '',
       camposExtra: producto.camposExtra,
       mailAsunto: producto.mailAsunto || '',
       mailCuerpoHtml: producto.mailCuerpoHtml || '',
     }
     setForm(loadedForm)
     setFormOriginal(loadedForm)
+    setImagenUrl(producto.imagenUrl || null)
+    setImagenFile(null)
+    setImagenRemove(false)
     setInitialLoading(false)
   }, [productoId, isNew])
 
@@ -52,10 +67,18 @@ const ProductoDetallePage = () => {
     try {
       if (isNew) {
         const created = await productosService.create(form)
-        if (andContinue) navigate(`/admin/productos/${created.id}`, { replace: true })
+        let imagenFailure: string | undefined
+        if (imagenFile) {
+          try { await productosService.uploadImagen(created.id, imagenFile) }
+          catch (err) { imagenFailure = `El producto se creo, pero no se pudo subir la imagen: ${err instanceof Error ? err.message : 'error desconocido'}` }
+        }
+        // If the image failed, stay on the (now existing) product so the admin can retry without creating a duplicate.
+        if (andContinue || imagenFailure) navigate(`/admin/productos/${created.id}`, { replace: true, state: imagenFailure ? { imagenError: imagenFailure } : undefined })
         else navigate('/admin/productos')
       } else {
         await productosService.update(productoId, form)
+        if (imagenFile) await productosService.uploadImagen(productoId, imagenFile)
+        else if (imagenRemove) await productosService.deleteImagen(productoId)
         setSuccess('Producto actualizado correctamente')
         await load()
         setTimeout(() => setSuccess(''), 3000)
@@ -68,6 +91,25 @@ const ProductoDetallePage = () => {
     e.preventDefault()
     await save(false)
   }
+
+  const handleImagenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!IMAGEN_TYPES.includes(file.type)) { setImagenError('Formato no permitido. Use PNG, JPG o WebP.'); return }
+    if (file.size > IMAGEN_MAX_BYTES) { setImagenError('La imagen supera el maximo de 2 MB.'); return }
+    setImagenError('')
+    setImagenFile(file)
+    setImagenRemove(false)
+  }
+
+  const removeImagen = () => {
+    setImagenError('')
+    setImagenFile(null)
+    setImagenRemove(true)
+  }
+
+  const imagenMostrada = imagenPreview ?? (imagenRemove ? null : imagenUrl)
 
   // Extra-field editor handlers
   const addCampoExtra = () => setForm({ ...form, camposExtra: [...form.camposExtra, emptyCampoExtra()] })
@@ -140,8 +182,18 @@ const ProductoDetallePage = () => {
           <textarea className="form-input" form="productoForm" rows={2} value={form.descripcion || ''} onChange={e => setForm({ ...form, descripcion: e.target.value })} />
         </div>
         <div className="md:col-span-12">
-          <label className="form-label">URL de Imagen</label>
-          <input type="text" className="form-input" form="productoForm" value={form.imagenUrl || ''} onChange={e => setForm({ ...form, imagenUrl: e.target.value })} placeholder="https://..." />
+          <label className="form-label">Imagen</label>
+          <div className="flex items-start gap-3">
+            {imagenMostrada && <img src={imagenMostrada} alt="Vista previa" className="w-32 h-32 object-contain border border-gray-200 rounded" />}
+            <div>
+              <input type="file" className="form-input" accept="image/png,image/jpeg,image/webp" onChange={handleImagenChange} />
+              <p className="text-sm text-slate-500 mt-1">PNG, JPG o WebP, hasta 2 MB. Se guarda al presionar Guardar.</p>
+              {imagenError && <p className="text-sm text-red-600 mt-1">{imagenError}</p>}
+              {imagenMostrada && (
+                <button type="button" className="btn-outline-danger btn-sm mt-2" onClick={removeImagen}><Trash2 className="w-3.5 h-3.5 mr-1 inline" />Quitar imagen</button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Campos extra */}
