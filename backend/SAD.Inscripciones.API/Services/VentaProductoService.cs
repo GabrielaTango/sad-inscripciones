@@ -210,7 +210,8 @@ public class VentaProductoService : IVentaProductoService
             try
             {
                 var externalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef);
-                var pagos = await _mercadoPagoService.BuscarTodosPagosPorReferenciaAsync(externalReference);
+                // Variante estricta: si MP falla, la venta cuenta como error y no pasa a Impaga.
+                var pagos = await _mercadoPagoService.BuscarPagosPorReferenciaEstrictoAsync(externalReference);
 
                 var aprobados = pagos.Where(p => p.Status == "approved").ToList();
                 foreach (var pago in aprobados)

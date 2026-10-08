@@ -321,4 +321,40 @@ public class MercadoPagoService : IMercadoPagoService
             return result;
         }
     }
+
+    public async Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarPagosPorReferenciaEstrictoAsync(string externalReference)
+    {
+        await EnsureConfiguradoAsync();
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", MercadoPagoConfig.AccessToken);
+
+        var url = $"https://api.mercadopago.com/v1/payments/search?external_reference={externalReference}&sort=date_created&criteria=asc";
+        var response = await httpClient.GetAsync(url);
+
+        // A diferencia de BuscarTodosPagosPorReferenciaAsync, un fallo de MP no se
+        // confunde con "sin pagos": se propaga para que quien llama no decida sobre datos incompletos.
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"MP Search API respondio {(int)response.StatusCode} para ref={externalReference}");
+
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var results = json.GetProperty("results");
+
+        var result = new List<MercadoPagoPaymentInfo>();
+        for (var i = 0; i < results.GetArrayLength(); i++)
+        {
+            var p = results[i];
+            result.Add(new MercadoPagoPaymentInfo
+            {
+                Id = p.GetProperty("id").GetInt64(),
+                Status = p.GetProperty("status").GetString() ?? string.Empty,
+                StatusDetail = p.GetProperty("status_detail").GetString() ?? string.Empty,
+                TransactionAmount = p.GetProperty("transaction_amount").GetDecimal(),
+                ExternalReference = p.TryGetProperty("external_reference", out var extRef) ? extRef.GetString() : null,
+                PaymentMethodId = p.TryGetProperty("payment_method_id", out var pmId) ? pmId.GetString() : null,
+            });
+        }
+
+        return result;
+    }
 }
