@@ -59,7 +59,7 @@ services:
       - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=SADInscripciones;User=root;Password=${MYSQL_ROOT_PASSWORD:-Admin123!};
       - JwtSettings__SecretKey=${JWT_SECRET_KEY:-SAD-Inscripciones-SuperSecretKey-2024-MinLength32Chars!}
       - MercadoPago__FrontendBaseUrl=https://www.diabetes2.org.ar
-      - MercadoPago__BackendPublicUrl=https://waspy-clarissa-elatedly.ngrok-free.dev
+      - MercadoPago__BackendPublicUrl=https://www.diabetes2.org.ar
       - SyncSettings__ApiKey=${SYNC_API_KEY:-sad-sync-secret-key-2026}
       - Email__EncryptionKey=${EMAIL_ENCRYPTION_KEY}
     depends_on:
