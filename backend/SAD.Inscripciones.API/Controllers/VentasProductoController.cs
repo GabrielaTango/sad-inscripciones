@@ -24,8 +24,8 @@ public class VentasProductoController : ControllerBase
     }
 
     /// <summary>
-    /// Listado admin de ventas. "estado" default "Pagada" cuando no se envia;
-    /// "Todas" (sin distinguir mayusculas) anula el filtro de estado.
+    /// Listado admin de ventas. Sin "estado" (o con "Todas", sin distinguir
+    /// mayusculas) devuelve todos los estados.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = "Admin")]
@@ -55,9 +55,20 @@ public class VentasProductoController : ControllerBase
 
     private static string? ResolverEstado(string? estado)
     {
-        if (string.IsNullOrWhiteSpace(estado))
-            return "Pagada";
-        return string.Equals(estado, "Todas", StringComparison.OrdinalIgnoreCase) ? null : estado;
+        if (string.IsNullOrWhiteSpace(estado) || string.Equals(estado, "Todas", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return estado;
+    }
+
+    /// <summary>
+    /// Consulta en MercadoPago todas las ventas Pendiente y devuelve el resumen
+    /// (consultadas, pagadas, impagas, siguen pendientes, errores).
+    /// </summary>
+    [HttpPost("consultar-pendientes")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> ConsultarPendientes()
+    {
+        return Ok(await _service.ConsultarPendientesAsync());
     }
 
     /// <summary>

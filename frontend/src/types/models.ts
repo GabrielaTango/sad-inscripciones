@@ -475,11 +475,20 @@ export interface VentaProductoAdmin {
   email: string
   datosExtra: Record<string, string>
   importe: number
-  estado: 'Pendiente' | 'Pagada' | 'Rechazada'
+  estado: 'Pendiente' | 'Pagada' | 'Impaga' | 'Rechazada'
   mpPaymentId?: number | null
   fechaAlta: string
   fechaPago?: string | null
   mailEnviado: boolean
+  updatedAt: string
+}
+
+export interface VentaProductoConsultaResultado {
+  consultadas: number
+  pagadas: number
+  impagas: number
+  siguenPendientes: number
+  errores: number
 }
 
 export interface VentaProductoAdminFiltros {

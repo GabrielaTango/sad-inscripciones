@@ -19,6 +19,12 @@ public interface IMercadoPagoService
     Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarTodosPagosPorReferenciaAsync(string externalReference);
 
     /// <summary>
+    /// Igual que <see cref="BuscarTodosPagosPorReferenciaAsync"/> pero lanza si MP falla,
+    /// en vez de devolver una lista vacía. Usar cuando "sin pagos" dispara una decisión.
+    /// </summary>
+    Task<IReadOnlyList<MercadoPagoPaymentInfo>> BuscarPagosPorReferenciaEstrictoAsync(string externalReference);
+
+    /// <summary>
     /// Carga la config actual de MercadoPago desde la DB (con cache), aplica el AccessToken
     /// al SDK global y devuelve el FrontendBaseUrl configurado.
     /// </summary>

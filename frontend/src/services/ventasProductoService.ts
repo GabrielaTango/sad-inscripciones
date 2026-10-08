@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { VentaProductoAdmin, VentaProductoAdminFiltros, VentaProductoCreateForm, VentaProductoCreateResult, VentaProductoEstado } from '../types/models'
+import type { VentaProductoAdmin, VentaProductoAdminFiltros, VentaProductoConsultaResultado, VentaProductoCreateForm, VentaProductoCreateResult, VentaProductoEstado } from '../types/models'
 
 const BASE = '/ventas-producto'
 
@@ -20,6 +20,7 @@ export const ventasProductoService = {
     const qs = buildParams(filtros).toString()
     return api.get<VentaProductoAdmin[]>(`${BASE}${qs ? `?${qs}` : ''}`)
   },
+  consultarPendientes: () => api.post<VentaProductoConsultaResultado>(`${BASE}/consultar-pendientes`, {}),
   exportExcel: async (filtros: VentaProductoAdminFiltros) => {
     const token = localStorage.getItem('sad_token')
     const qs = buildParams(filtros).toString()

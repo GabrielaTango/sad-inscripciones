@@ -23,11 +23,18 @@ public interface IVentaProductoService
     Task ProcesarPagoAsync(MercadoPagoPaymentInfo paymentInfo);
 
     /// <summary>
-    /// Usado por la página pública de resultado: si la venta sigue Pendiente, busca
+    /// Usado por la página pública de resultado: si la venta no esta Pagada, busca
     /// los pagos de MercadoPago por external_reference y confirma los aprobados vía
     /// <see cref="ProcesarPagoAsync"/>; luego devuelve el estado actual de la venta.
     /// </summary>
     Task<VentaProductoEstadoDto> VerificarAsync(string publicRef);
+
+    /// <summary>
+    /// Consulta en MercadoPago todas las ventas Pendiente: confirma las que tengan un
+    /// pago aprobado y marca Impaga las de mas de 24 h sin ningun pago que pueda
+    /// aprobarse todavia. Una venta que falla no aborta al resto.
+    /// </summary>
+    Task<VentaProductoConsultaResultadoDto> ConsultarPendientesAsync();
 
     /// <summary>
     /// Listado admin de ventas con filtros (producto, estado, rango de FechaPago,
