@@ -39,7 +39,7 @@ Production bug (2026-10-08): a customer paid a product but the sale was not list
 - Branch: `feat/ventas-consultar-pagos`, created on top of `fix/mp-webhook-ventas-url`. Strategy: `single-pr`. Forecast ~350 authored lines.
 
 ## Tasks
-- [ ] T1 Backend + frontend in one work unit. Route: delegated writer (2+ non-trivial files).
+- [x] T1 (commits `59b9d04`, `b54fc7b`; manual local check confirmed by the user on 2026-10-08: paid-without-returning sale became `Pagada`, old unpaid ones `Impaga`) Backend + frontend in one work unit. Route: delegated writer (2+ non-trivial files).
   - Repository: confirmation accepts `Pendiente` and `Impaga`; list pending sales; mark `Impaga` (only from `Pendiente`); date-range filter usable for unpaid sales.
   - Service: bulk consultation returning a summary (consulted, paid, unpaid, still pending, errors); `VerificarAsync` also checks MercadoPago for `Impaga` sales.
   - Controller: Admin `POST api/ventas-producto/consultar-pendientes`; list endpoint returns all states by default.
@@ -60,4 +60,4 @@ Production bug (2026-10-08): a customer paid a product but the sale was not list
 - A sale whose only payments are rejected/cancelled becomes `Impaga` after 24 h (follows the rule as decided).
 
 ## Next step
-Manual check in the local sandbox (pay without returning, then press the button), then tick T1. Push and PR are the user's decision; `fix/mp-webhook-ventas-url` (`3efadcf`) should be merged first or together.
+Feature complete. `fix/mp-webhook-ventas-url` is already merged to `main` (PR #5). Remaining, user's decision: push this branch, PR to `main`, deploy on the VPS, then use the button there to recover paid sales left `Pendiente`.
