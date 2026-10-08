@@ -17,4 +17,5 @@ public class VentaProductoAdminDto
     public DateTime FechaAlta { get; set; }
     public DateTime? FechaPago { get; set; }
     public bool MailEnviado { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }

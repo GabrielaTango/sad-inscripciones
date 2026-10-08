@@ -46,7 +46,7 @@ public class VentaProductoRepository : IVentaProductoRepository
         using var connection = _dbFactory.CreateConnection();
         var sql = @"
             SELECT v.Id, v.ProductoId, p.Nombre AS ProductoNombre, v.Dni, v.Nombre, v.Apellido, v.Email,
-                   v.DatosExtra, v.Importe, v.Estado, v.MpPaymentId, v.FechaAlta, v.FechaPago, v.MailEnviado
+                   v.DatosExtra, v.Importe, v.Estado, v.MpPaymentId, v.FechaAlta, v.FechaPago, v.MailEnviado, v.UpdatedAt
             FROM VentasProducto v
             JOIN Productos p ON p.Id = v.ProductoId
             WHERE 1 = 1";
@@ -61,18 +61,18 @@ public class VentaProductoRepository : IVentaProductoRepository
         }
         if (desde.HasValue)
         {
-            sql += " AND v.FechaPago >= @Desde";
+            sql += " AND COALESCE(v.FechaPago, v.FechaAlta) >= @Desde";
         }
         if (hasta.HasValue)
         {
             // Limite exclusivo del dia siguiente para que "hasta" incluya el dia completo.
-            sql += " AND v.FechaPago < @HastaExclusiva";
+            sql += " AND COALESCE(v.FechaPago, v.FechaAlta) < @HastaExclusiva";
         }
         if (!string.IsNullOrWhiteSpace(texto))
         {
             sql += " AND (v.Dni LIKE @Texto OR v.Nombre LIKE @Texto OR v.Apellido LIKE @Texto OR v.Email LIKE @Texto)";
         }
-        sql += " ORDER BY v.Id DESC";
+        sql += " ORDER BY COALESCE(v.FechaPago, v.FechaAlta) DESC, v.Id DESC";
 
         return await connection.QueryAsync<VentaProductoAdminRow>(sql, new
         {
@@ -102,7 +102,7 @@ public class VentaProductoRepository : IVentaProductoRepository
                 return ConfirmarPagoResult.NotFound;
             }
 
-            if (venta.Estado != "Pendiente")
+            if (venta.Estado != "Pendiente" && venta.Estado != "Impaga")
             {
                 // Already Pagada by a previous call: nothing to do, keep the
                 // webhook / verification idempotent.
@@ -121,7 +121,7 @@ public class VentaProductoRepository : IVentaProductoRepository
             const string sql = @"
                 UPDATE VentasProducto
                 SET Estado = 'Pagada', MpPaymentId = @MpPaymentId, FechaPago = UTC_TIMESTAMP(), UpdatedAt = UTC_TIMESTAMP()
-                WHERE Id = @Id AND Estado = 'Pendiente'";
+                WHERE Id = @Id AND Estado IN ('Pendiente', 'Impaga')";
             var rows = await connection.ExecuteAsync(sql, new { Id = ventaId, MpPaymentId = mpPaymentId }, transaction);
 
             if (rows == 0)
@@ -146,6 +146,25 @@ public class VentaProductoRepository : IVentaProductoRepository
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    public async Task<IEnumerable<VentaProducto>> ListPendientesAsync()
+    {
+        using var connection = _dbFactory.CreateConnection();
+        return await connection.QueryAsync<VentaProducto>(
+            "SELECT * FROM VentasProducto WHERE Estado = 'Pendiente' ORDER BY Id");
+    }
+
+    public async Task<bool> MarcarImpagaAsync(int ventaId, int horasMinimas)
+    {
+        using var connection = _dbFactory.CreateConnection();
+        // FechaAlta se escribe con UTC_TIMESTAMP(), asi que la antiguedad se compara
+        // contra el mismo reloj dentro de SQL. Solo transiciona desde Pendiente.
+        const string sql = @"
+            UPDATE VentasProducto SET Estado = 'Impaga', UpdatedAt = UTC_TIMESTAMP()
+            WHERE Id = @Id AND Estado = 'Pendiente'
+              AND FechaAlta < DATE_SUB(UTC_TIMESTAMP(), INTERVAL @Horas HOUR)";
+        return await connection.ExecuteAsync(sql, new { Id = ventaId, Horas = horasMinimas }) > 0;
     }
 
     public async Task<bool> MarcarMailEnviadoAsync(int ventaId)

@@ -15,6 +15,13 @@ public class VentaProductoService : IVentaProductoService
     private static readonly Regex EmailRegex = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.Compiled);
     private static readonly Regex DniLimpiezaRegex = new(@"[.\s]", RegexOptions.Compiled);
 
+    /// <summary>Horas desde FechaAlta tras las cuales una venta Pendiente sin pago pasa a Impaga.</summary>
+    private const int HorasHastaImpaga = 24;
+
+    // Estados de pago de MP que todavia pueden terminar en "approved".
+    private static readonly HashSet<string> EstadosPagoEnCurso =
+        new() { "pending", "in_process", "authorized", "in_mediation" };
+
     private readonly IProductoRepository _productoRepository;
     private readonly IVentaProductoRepository _repository;
     private readonly IMercadoPagoService _mercadoPagoService;
@@ -165,7 +172,9 @@ public class VentaProductoService : IVentaProductoService
         if (venta is null)
             throw new NotFoundException($"VentaProducto con PublicRef {publicRef} no encontrada.");
 
-        if (venta.Estado == "Pendiente")
+        // Una venta Impaga tambien se reconsulta: si el comprador vuelve y el pago
+        // quedo aprobado, ProcesarPagoAsync la confirma.
+        if (venta.Estado != "Pagada")
         {
             var externalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef);
             var pagos = await _mercadoPagoService.BuscarTodosPagosPorReferenciaAsync(externalReference);
@@ -188,6 +197,76 @@ public class VentaProductoService : IVentaProductoService
             Nombre = venta.Nombre,
             Importe = venta.Importe,
         };
+    }
+
+    public async Task<VentaProductoConsultaResultadoDto> ConsultarPendientesAsync()
+    {
+        var resultado = new VentaProductoConsultaResultadoDto();
+        var pendientes = (await _repository.ListPendientesAsync()).ToList();
+
+        foreach (var venta in pendientes)
+        {
+            resultado.Consultadas++;
+            try
+            {
+                var externalReference = VentaExternalReference.Build(venta.Id, venta.PublicRef);
+                var pagos = await _mercadoPagoService.BuscarTodosPagosPorReferenciaAsync(externalReference);
+
+                var aprobados = pagos.Where(p => p.Status == "approved").ToList();
+                foreach (var pago in aprobados)
+                {
+                    await ProcesarPagoAsync(pago);
+                }
+
+                var actual = await _repository.GetByIdAsync(venta.Id);
+                if (actual is null)
+                {
+                    resultado.Errores++;
+                    continue;
+                }
+
+                if (actual.Estado == "Pagada")
+                {
+                    resultado.Pagadas++;
+                    continue;
+                }
+
+                if (actual.Estado != "Pendiente")
+                {
+                    // Otro proceso la movio mientras tanto: no se cuenta ni se toca.
+                    resultado.SiguenPendientes++;
+                    continue;
+                }
+
+                if (aprobados.Count > 0)
+                {
+                    // Hay un pago aprobado que no confirmo la venta (monto distinto u otro
+                    // motivo, ya logueado por ProcesarPagoAsync): se cobro plata, asi que
+                    // nunca se marca Impaga; queda Pendiente para revision manual.
+                    resultado.Errores++;
+                    continue;
+                }
+
+                if (pagos.Any(p => EstadosPagoEnCurso.Contains(p.Status)))
+                {
+                    resultado.SiguenPendientes++;
+                    continue;
+                }
+
+                // La antiguedad se evalua en SQL: false significa que aun no pasaron las horas minimas.
+                if (await _repository.MarcarImpagaAsync(venta.Id, HorasHastaImpaga))
+                    resultado.Impagas++;
+                else
+                    resultado.SiguenPendientes++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al consultar la venta {VentaId} contra MercadoPago", venta.Id);
+                resultado.Errores++;
+            }
+        }
+
+        return resultado;
     }
 
     /// <summary>
@@ -259,6 +338,7 @@ public class VentaProductoService : IVentaProductoService
         FechaAlta = fila.FechaAlta,
         FechaPago = fila.FechaPago,
         MailEnviado = fila.MailEnviado,
+        UpdatedAt = fila.UpdatedAt,
     };
 
     private static Dictionary<string, string> DeserializeDatosExtra(string? json)
@@ -298,7 +378,7 @@ public class VentaProductoService : IVentaProductoService
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Ventas");
 
-        var headers = new List<string> { "Fecha pago", "Producto", "DNI", "Apellido", "Nombre", "Email" };
+        var headers = new List<string> { "Estado", "Fecha alta", "Fecha pago", "Producto", "DNI", "Apellido", "Nombre", "Email" };
         headers.AddRange(columnasExtra.Select(c => c.Label));
         headers.Add("Importe");
         headers.Add("Nro pago MP");
@@ -318,6 +398,8 @@ public class VentaProductoService : IVentaProductoService
             int row = i + 2;
             int col = 1;
 
+            ws.Cell(row, col++).Value = venta.Estado;
+            ws.Cell(row, col++).Value = venta.FechaAlta.ToString("dd/MM/yyyy HH:mm");
             ws.Cell(row, col++).Value = venta.FechaPago?.ToString("dd/MM/yyyy HH:mm") ?? "";
             ws.Cell(row, col++).Value = venta.ProductoNombre;
             ws.Cell(row, col++).Value = venta.Dni;
